@@ -8,7 +8,7 @@ CXXFILES = main.cc
 INCLUDE_PATH = -I/usr/local/include
 COMPILE_FLAGS = -c -v -std=c++1z -Wall
 LDFLAGS = -lfcgi -lfcgi++
-NGINX_BIN = /usr/local/nginx/sbin
+NGINX_BIN = /etc/nginx/sbin
 REMOVE = rm -rf
 
 $(BINARY_NAME) : $(OBJS)
