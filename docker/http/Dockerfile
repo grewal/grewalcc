@@ -11,6 +11,7 @@ RUN apt -y install \
 RUN git clone https://grewal:napkauf26@bitbucket.org/grewal/grewal.git
 WORKDIR grewal/third_party/nginx/stable/nginx-1.16.1
 RUN ./configure --build=grewal_DOCKER \
+		--conf-path=conf/nginx_http.conf \
                 --without-http_charset_module \
                 --without-http_gzip_module \
                 --without-http_ssi_module \
@@ -65,4 +66,4 @@ RUN apt -y autoclean
 EXPOSE 80
 
 # Run the grewal http server & link grewal binary to fcgi server @port :8000
-CMD /usr/local/nginx/sbin/nginx -V && /usr/local/nginx/sbin/nginx
+CMD /usr/local/nginx/sbin/nginx -V && /usr/local/nginx/sbin/nginx -c /usr/local/nginx/conf/nginx_http.conf
