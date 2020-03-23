@@ -11,7 +11,7 @@
 
 #define nginx_version      10011016001
 #define NGINX_VERSION      "1.0.0.1_1.16.1"
-#define NGINX_VER          "mysides/" NGINX_VERSION
+#define NGINX_VER          "grewal/" NGINX_VERSION
 
 #ifdef NGX_BUILD
 #define NGINX_VER_BUILD    NGINX_VER " (" NGX_BUILD ")"
@@ -19,7 +19,7 @@
 #define NGINX_VER_BUILD    NGINX_VER
 #endif
 
-#define NGINX_VAR          "mysides"
+#define NGINX_VAR          "grewal"
 #define NGX_OLDPID_EXT     ".oldbin"
 
 
