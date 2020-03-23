@@ -8,12 +8,13 @@ RUN apt -y install \
 	make gcc g++ git libfcgi-dev spawn-fcgi wget libpcre3 libpcre3-dev zlib1g-dev
 
 # OpenSSL - build, configure & install
+ARG openssl_file=OpenSSL_1_1_1e.tar.gz
 RUN mkdir /etc/openssl
 RUN mkdir /etc/openssl/src
 WORKDIR /etc/openssl/src
-RUN wget -c --no-check-certificate https://github.com/openssl/openssl/archive/OpenSSL_1_0_2u.tar.gz
-RUN tar --strip-components=1 -xvzf OpenSSL_1_0_2u.tar.gz
-RUN rm -rf OpenSSL_1_0_2u.tar.gz
+RUN wget -c --no-check-certificate https://github.com/openssl/openssl/archive/$openssl_file
+RUN tar --strip-components=1 -xvzf $openssl_file
+RUN rm -rf $openssl_file
 RUN ./config -zlib -no-deprecated --openssldir=/etc/openssl
 RUN make
 RUN make install
