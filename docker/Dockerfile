@@ -5,10 +5,10 @@ MAINTAINER Yadwinder Grewal <ygrewal@gmail.com>
 
 RUN apt update && apt -y upgrade
 RUN apt -y install \
-	make gcc g++ git libfcgi-dev spawn-fcgi wget libpcre3 libpcre3-dev zlib1g-dev
+	make gcc g++ git libfcgi-dev spawn-fcgi wget libpcre3 libpcre3-dev zlib1g-dev libre2-dev
 
 # OpenSSL - build, configure & install
-ARG openssl_file=OpenSSL_1_1_1e.tar.gz
+ARG openssl_file=OpenSSL_1_1_1k.tar.gz
 RUN mkdir /etc/openssl
 RUN mkdir /etc/openssl/src
 WORKDIR /etc/openssl/src
@@ -17,7 +17,7 @@ RUN tar --strip-components=1 -xvzf $openssl_file
 RUN rm -rf $openssl_file
 RUN ./config -zlib -no-deprecated --openssldir=/etc/openssl
 RUN make
-RUN make install
+RUN make install_sw
 RUN ldconfig
 RUN make clean
 
@@ -30,10 +30,10 @@ RUN git clone https://grewal:napkauf26@bitbucket.org/grewal/grewal.git
 RUN cp grewal/certificates/live/grewal.cc/*.pem /etc/letsencrypt/live/grewal.cc
 
 # Customize and install nginx with https
-WORKDIR grewal/third_party/nginx/stable/nginx-1.16.1
+WORKDIR grewal/third_party/nginx/stable/nginx-1.20.0
 RUN ./configure --prefix=/etc/nginx \
 		--sbin-path=/etc/nginx/sbin/nginx \
-		--build=grewal_DOCKER \
+		--build=grewal_gcloud_DOCKER_autobuild \
                 --without-http_charset_module \
                 --without-http_ssi_module \
                 --without-http_userid_module \
@@ -75,6 +75,7 @@ RUN ./configure --prefix=/etc/nginx \
                 --without-stream_upstream_zone_module \
 		--with-http_ssl_module \
 		--with-pcre \
+		--with-http_v2_module \
 		--with-http_gzip_static_module \
                 --with-openssl=/etc/openssl/src
 RUN make

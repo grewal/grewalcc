@@ -1,22 +1,28 @@
 # Author: Yadwinder Grewal
 # Copyright: 2020 Grewal, Inc.
 
-BINARY_NAME = grewal 
+BINARY_NAME = grewal
+CC = cc
 CXX = g++
-OBJS = main.o
-CXXFILES = main.cc
+OBJS = main.o security.o
+CXXFILES = main.cc ../security/security.cc
 INCLUDE_PATH = -I/usr/local/include
+CFLAGS = -Wall -c -v -g
 COMPILE_FLAGS = -c -v -std=c++1z -Wall
 LDFLAGS = -lfcgi -lfcgi++
+GOOGLE_FLAGS = -lre2 -lpthread -lcrypto -lssl
 NGINX_BIN = /etc/nginx/sbin
 REMOVE = rm -rf
 
 $(BINARY_NAME) : $(OBJS)
 	# Compile the binary
-	$(CXX) $(OBJS) $(LDFLAGS) -o $(@)
+	$(CXX) $(OBJS) $(LDFLAGS) $(GOOGLE_FLAGS) -o $(@)
 
 %.o:	%.cc
-	$(CXX) $(COMPILE_FLAGS) $<
+	$(CXX) $(COMPILE_FLAGS) $(GOOGLE_FLAGS) $(CXXFILES) $(INCLUDE_PATH) $<
+
+%.o:	%.c
+	$(CC) $(CFLAGS) $(CFILES) $(INCLUDE_PATH)
 
 clean :
 	$(REMOVE) $(BINARY_NAME)

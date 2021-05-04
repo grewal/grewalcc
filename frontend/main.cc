@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include "fcgio.h"
+#include "../security/security.h"
 
 using namespace std;
 
@@ -28,11 +29,25 @@ using namespace std;
       cout.rdbuf(&cout_fcgi_streambuf);
       cerr.rdbuf(&cerr_fcgi_streambuf);
 
+      fcgi_ostream  fcgi;
+//      char* request_uri_ = FCGX_GetParam("REQUEST_URI", request.envp);
+      char* remote_ip_ = FCGX_GetParam("REMOTE_ADDR", request.envp);
+      char* user_agent_ = FCGX_GetParam("HTTP_USER_AGENT", request.envp);
+
+      grewal::Security* security_ = new grewal::Security();
+
       /* Homepage */
       std::cout << "Content-type: text/html\r\n\r\n" << std::endl;
       std::cout << "<meta name='viewport' content='width=device-width, initial-scale=1.0/'>"
-                << "<html><title>Grewal.cc</title><body><center>Grewal.cc</center>"
-                << "</body></html>" << std::endl;
+                << "<html><title>Grewal.cc</title><body><center>Grewal.cc";
+      if (security_->isInternal(remote_ip_)) { 
+	      std::cout << "<br><br><font color='red'>INTERNAL</font><br><br>";
+      }
+      std::cout << "<br><br><br><br><br><b>IP:</b>        " << remote_ip_ 
+		<< "<br><br><b>user-agent:</b>        " << user_agent_;
+      std::cout << "</center></body></html>" << 
+      std::endl;
+      delete security_;
 
     // the fcgi_streambuf destructor will auto flush
     } // end while (FCGX_Accept_r(&request) == 0)
