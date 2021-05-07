@@ -1,5 +1,5 @@
 # Author: Yadwinder Grewal
-# Copyright: 2020 Grewal, Inc.
+# Copyright: 2021 Grewal, Inc.
 
 BINARY_NAME = grewal
 CC = cc

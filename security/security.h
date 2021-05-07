@@ -11,6 +11,7 @@ namespace grewal {
 
       // Checks if address matches internal IP range
       bool isInternal(const char*) const;
+      const char* getSubDomain(const char*);
     };
 
 } // namespace grewal 

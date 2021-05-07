@@ -1,4 +1,4 @@
-/*  Copyright 2020 Grewal Inc.  All Rights Reserved.
+/*  Copyright 2021 Grewal Inc.  All Rights Reserved.
     Author:  Yadwinder Grewal (ygrewal@gmail.com)
 */
 
@@ -30,21 +30,26 @@ using namespace std;
       cerr.rdbuf(&cerr_fcgi_streambuf);
 
       fcgi_ostream  fcgi;
-//      char* request_uri_ = FCGX_GetParam("REQUEST_URI", request.envp);
+      // char* request_uri_ = FCGX_GetParam("REQUEST_URI", request.envp);
       char* remote_ip_ = FCGX_GetParam("REMOTE_ADDR", request.envp);
       char* user_agent_ = FCGX_GetParam("HTTP_USER_AGENT", request.envp);
+      char* http_host_ = FCGX_GetParam("HTTP_HOST", request.envp);
 
       grewal::Security* security_ = new grewal::Security();
+
+      // robots.txt
 
       /* Homepage */
       std::cout << "Content-type: text/html\r\n\r\n" << std::endl;
       std::cout << "<meta name='viewport' content='width=device-width, initial-scale=1.0/'>"
-                << "<html><title>Grewal.cc</title><body><center>Grewal.cc";
+                << "<html><title>" << http_host_ 
+		<< "</title><body><center>Grewal.cc";
       if (security_->isInternal(remote_ip_)) { 
 	      std::cout << "<br><br><font color='red'>INTERNAL</font><br><br>";
       }
       std::cout << "<br><br><br><br><br><b>IP:</b>        " << remote_ip_ 
-		<< "<br><br><b>user-agent:</b>        " << user_agent_;
+		<< "<br><br><b>user-agent:</b>        " << user_agent_
+                << "<br><br><b>sub-domain:</b>		" << security_->getSubDomain(http_host_);
       std::cout << "</center></body></html>" << 
       std::endl;
       delete security_;
