@@ -11,6 +11,10 @@ namespace grewal {
     return re2::RE2::PartialMatch(ipToCheck_, "76.102.1.99");
   }
 
+  bool Security::isRobotsTxt(const char *url_) const {
+    return re2::RE2::PartialMatch(url_, "robots.txt"); 
+  }
+
   const char* Security::getSubDomain(const char* host_) {
     const char* value = "";
     if (re2::RE2::PartialMatch(host_, "^w")) {

@@ -5,15 +5,20 @@
 #define GREWAL_SECURITY_H
 
 namespace grewal {
-  class Security {
-    public:
-      Security();
 
-      // Checks if address matches internal IP range
-      bool isInternal(const char*) const;
-      const char* getSubDomain(const char*);
-    };
+class Security {
 
-} // namespace grewal 
+public:
+    Security();
+
+    // robots.txt
+    bool isRobotsTxt(const char*) const;
+
+    // Checks if address matches internal IP range
+    bool isInternal(const char*) const;
+    const char* getSubDomain(const char*);
+};
+
+} // namespace grewal
 
 #endif // GREWAL_SECURITY_H
