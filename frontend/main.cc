@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
 
         // check for robots.txt
         if (security_ -> isRobotsTxt(request_uri_)) {
-            std::cout << "Content-type: text/text\r\n\r\n" << std::endl;
+            std::cout << "Content-type: text/plain\r\n\r\n" << std::endl;
             std::cout << "User-agent: *\nAllow: /" << std::endl;
         }
 
@@ -47,17 +47,17 @@ int main(int argc, char *argv[]) {
 
             /* Homepage */
             std::cout << "Content-type: text/html\r\n\r\n" << std::endl;
-            std::cout << "<meta name='viewport' content='width=device-width, initial-scale=1.0/'>"
-                      << "<html><title>" << http_host_
-                      << "</title><body><center>Grewal.cc";
+            std::cout << "<meta name='viewport' content='width=device-width, initial-scale=1.0/'>";
+            //std::cout << "<head><link rel='shortcut icon' href='https://sites.google.com/site/ygrewal/favico.gif' type='image/x-icon />";
+            std::cout << "<title>" << http_host_ << "</title></head>"
+                      << "<body><center>Grewal.cc";
             if (security_->isInternal(remote_ip_)) {
                 std::cout << "<br><br><font color='red'>INTERNAL</font><br><br>";
             }
-            std::cout << "<br><br><br><br><br><b>IP:</b>" << remote_ip_
-                      << "<br><br><b>user-agent:</b>" << user_agent_
-                      << "<br><br><b>sub-domain:</b>" << security_->getSubDomain(http_host_);
-            std::cout << "</center></body></html>" <<
-                      std::endl;
+            std::cout << "<br><br><br><br><br><b>IP: </b>" << remote_ip_
+                      << "<br><br><b>user-agent: </b>" << user_agent_
+                      << "<br><br><b>sub-domain: </b>" << security_->getSubDomain(http_host_);
+            std::cout << "</center></body></html>" << std::endl;
             delete security_;
 
         }  // end HOMEPAGE
