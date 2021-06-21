@@ -30,7 +30,7 @@ RUN git clone https://grewal:napkauf26@bitbucket.org/grewal/grewal.git
 RUN cp grewal/certificates/live/grewal.cc/*.pem /etc/letsencrypt/live/grewal.cc
 
 # Customize and install nginx with https
-WORKDIR grewal/third_party/nginx/stable/nginx-1.20.0
+WORKDIR grewal/third_party/nginx/stable/nginx-1.20.1
 RUN ./configure --prefix=/etc/nginx \
 		--sbin-path=/etc/nginx/sbin/nginx \
 		--build=grewal_gcloud_DOCKER_autobuild \
