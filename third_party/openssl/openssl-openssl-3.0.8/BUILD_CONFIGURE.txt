@@ -1,0 +1,1 @@
+./config -no-deprecated -no-legacy --openssldir=/etc/openssl
