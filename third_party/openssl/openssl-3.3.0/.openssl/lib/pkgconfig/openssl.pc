@@ -1,0 +1,7 @@
+libdir=/home/monty/src/grewalcc/third_party/nginx/mainline/nginx-1.25.4/../../../openssl/openssl-3.3.0/.openssl/lib64
+includedir=/home/monty/src/grewalcc/third_party/nginx/mainline/nginx-1.25.4/../../../openssl/openssl-3.3.0/.openssl/include
+
+Name: OpenSSL
+Description: Secure Sockets Layer and cryptography libraries and tools
+Version: 3.3.0
+Requires: libssl libcrypto
