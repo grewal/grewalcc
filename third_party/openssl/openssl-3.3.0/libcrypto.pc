@@ -1,0 +1,11 @@
+libdir=/home/monty/src/grewalcc/third_party/openssl/openssl-3.3.0
+includedir=/home/monty/src/grewalcc/third_party/openssl/openssl-3.3.0/include
+enginesdir=/home/monty/src/grewalcc/third_party/openssl/openssl-3.3.0/engines
+modulesdir=/home/monty/src/grewalcc/third_party/openssl/openssl-3.3.0/providers
+
+Name: OpenSSL-libcrypto
+Description: OpenSSL cryptography library
+Version: 3.3.0
+Libs: -L${libdir} -lcrypto
+Libs.private: -ldl
+Cflags: -I${includedir}
