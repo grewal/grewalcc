@@ -27,6 +27,10 @@ int main(int argc, char *argv[]) {
     FCGX_Init();
     FCGX_InitRequest(&request, 0, 0);
 
+    //Initialize a MySQL connection outside the while loop
+    MYSQL* mysql_ = initializeMySQL();
+
+
     // Process the incoming http_request
     while (FCGX_Accept_r(&request) == 0) {
         fcgi_streambuf cin_fcgi_streambuf(request.in);
@@ -95,15 +99,17 @@ int main(int argc, char *argv[]) {
 
 
 	    // Write the http request logs to mariadb
-            MYSQL* mysql_ = initializeMySQL();
+            mysql_ = initializeMySQL();
             bool writeSuccess = setHttpRequestLog(mysql_, request);
             std::cout << (writeSuccess ? "<br>SUCCESS" : "<br>FAILURE") << std::endl;
 
             mysql_close(mysql_);
             std::cout << "</center></body></html>" << std::endl;
-        }
-    }
-}
+
+        } // end else
+    } // end while
+    return 0;
+} // end main
 
 FCGX_Request initializeFCGXRequest() {
     FCGX_Request request;
@@ -115,17 +121,22 @@ MYSQL* initializeMySQL() {
     MYSQL* mysql = mysql_init(nullptr);
     if (!mysql) {
         std::cout << "Error: Failed to initialize MySQL" << std::endl;
+	mysql_close(mysql);
         return nullptr;
     }
 
-    if (!mysql_real_connect(mysql, "localhost", "http_writer", "grewal_http_write_logs_password", "grewal", 0, nullptr, 0)) {
-        std::cout << "Error: Failed to connect to database: " << std::endl;
+    try {
+        if (!mysql_real_connect(mysql, "localhost", "http_writer", "grewal_http_write_logs_password", "grewal", 0, nullptr, 0)) {
+            throw std::runtime_error(std::string("Error: Failed to connect to database: ") + mysql_error(mysql));
+        }
+    } catch (const std::runtime_error& e) {
+        std::cout << "DB connection looks like it failed. " << std::endl;
         mysql_close(mysql);
         return nullptr;
     }
+
     return mysql;
 }
-
 /*
  * Preconditions:
  * 	MySQL Connection: The function assumes that a valid connection to the MySQL database has been established prior to its invocation.
@@ -144,6 +155,7 @@ The setHttpRequestLog function is responsible for logging HTTP request details i
 bool setHttpRequestLog(MYSQL* mysql_, const FCGX_Request& request) {
     if (!mysql_) {
         std::cout << "Error: Failed to initialize MySQL inside SETHTTP" << std::endl;
+	mysql_close(mysql_);
         return false;
     }
 
@@ -231,6 +243,6 @@ bool setHttpRequestLog(MYSQL* mysql_, const FCGX_Request& request) {
         return false;
     }
 
-    mysql_close(mysql_);
+    //mysql_close(mysql_);
     return true;
 }
