@@ -1,15 +1,15 @@
 # Author: Yadwinder Grewal
-# Copyright: 2021 Grewal, Inc.
+# Copyright: 2024 Grewal, Inc.
 
 BINARY_NAME = grewal
 CC = cc
 CXX = g++
-OBJS = main.o security.o
-CXXFILES = main.cc ../security/security.cc
-INCLUDE_PATH = -I/usr/local/include
+OBJS = main.o security.o sanitizer.o
+CXXFILES = main.cc ../security/security.cc ../security/sanitizer.cc
+INCLUDE_PATH = -I/usr/local/include -I/usr/include/mysql
 CFLAGS = -Wall -c -v -g
 COMPILE_FLAGS = -c -v -std=c++1z -Wall
-LDFLAGS = -lfcgi -lfcgi++
+LDFLAGS = -lfcgi -lfcgi++ -lmysqlclient
 GOOGLE_FLAGS = -lre2 -lpthread -lcrypto -lssl
 NGINX_BIN = /etc/nginx/sbin
 REMOVE = rm -rf
