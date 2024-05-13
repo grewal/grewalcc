@@ -1,0 +1,11 @@
+#openssl pkg-config source file
+
+prefix=/home/monty/src/grewalcc/third_party/nginx/stable/nginx-1.26.0/../../../libressl/libressl-3.9.2/.openssl
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: LibreSSL
+Description: Secure Sockets Layer and cryptography libraries and tools
+Version: 3.9.2
+Requires: libssl libcrypto

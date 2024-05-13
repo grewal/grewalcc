@@ -1,0 +1,13 @@
+#libcrypto pkg-config source file
+
+prefix=/home/monty/src/grewalcc/third_party/nginx/stable/nginx-1.26.0/../../../libressl/libressl-3.9.2/.openssl
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: LibreSSL-libcrypto
+Description: LibreSSL cryptography library
+Version: 3.9.2
+Libs: -L${libdir} -lcrypto
+Libs.private: -lresolv -lpthread  
+Cflags: -I${includedir}
