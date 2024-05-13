@@ -1,0 +1,13 @@
+#libtls pkg-config source file
+
+prefix=/home/monty/src/grewalcc/third_party/nginx/stable/nginx-1.26.0/../../../libressl/libressl-3.9.2/.openssl
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: LibreSSL-libtls
+Description: Secure communications using the TLS socket protocol.
+Version: 3.9.2
+Libs: -L${libdir} -ltls
+Libs.private: -lresolv -lpthread   -lssl -lcrypto
+Cflags: -I${includedir}
