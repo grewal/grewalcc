@@ -8,7 +8,7 @@ namespace grewal {
   Security::Security() {}
 
   bool Security::isInternal(const char *ipToCheck_) const {
-    return re2::RE2::PartialMatch(ipToCheck_, "76.102.1.99");
+    return re2::RE2::PartialMatch(ipToCheck_, "185.169.0.60");
   }
 
   bool Security::isRobotsTxt(const char *url_) const {
@@ -23,8 +23,8 @@ namespace grewal {
       value = "yadwinder";
     } else if (re2::RE2::FullMatch(host_, "m.grewal.cc")) {
       value = "m";
-    } else if (re2::RE2::PartialMatch(host_, "^r")) {
-      value = "raman";
+    } else if (re2::RE2::PartialMatch(host_, "^monty")) {
+      value = "monty";
     }
     return value;
   } // end getSubDomain

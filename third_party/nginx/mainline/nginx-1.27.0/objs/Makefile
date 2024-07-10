@@ -1,6 +1,6 @@
 
 CC =	cc
-CFLAGS =  -pipe  -O -W -Wall -Wpointer-arith -Wno-unused-parameter -Werror -g  -Wno-deprecated-declarations
+CFLAGS =  -pipe  -O -W -Wall -Wpointer-arith -Wno-unused-parameter -Werror -g -Wno-error=type-limits -Wno-deprecated-declarations
 CPP =	cc -E
 LINK =	$(CC)
 
@@ -10,8 +10,8 @@ ALL_INCS = -I src/core \
 	-I src/event/modules \
 	-I src/event/quic \
 	-I src/os/unix \
-	-I brotli/deps/brotli/c/include \
-	-I /home/monty/src/grewalcc/third_party/libressl/git/libressl-Latest-Git-06012024_1000am/.openssl/include \
+	-I brotli//deps/brotli/c/include \
+	-I /home/monty/src/grewalcc/third_party/openssl/github/05302024_0804/.openssl/include \
 	-I objs \
 	-I src/http \
 	-I src/http/modules \
@@ -96,7 +96,7 @@ CORE_DEPS = src/core/nginx.h \
 	src/event/quic/ngx_event_quic_socket.h \
 	src/event/quic/ngx_event_quic_openssl_compat.h \
 	src/core/ngx_regex.h \
-	/home/monty/src/grewalcc/third_party/libressl/git/libressl-Latest-Git-06012024_1000am/.openssl/include/openssl/ssl.h \
+	/home/monty/src/grewalcc/third_party/openssl/github/05302024_0804/.openssl/include/openssl/ssl.h \
 	objs/ngx_auto_config.h
 
 
@@ -105,8 +105,8 @@ CORE_INCS = -I src/core \
 	-I src/event/modules \
 	-I src/event/quic \
 	-I src/os/unix \
-	-I brotli/deps/brotli/c/include \
-	-I /home/monty/src/grewalcc/third_party/libressl/git/libressl-Latest-Git-06012024_1000am/.openssl/include \
+	-I brotli//deps/brotli/c/include \
+	-I /home/monty/src/grewalcc/third_party/openssl/github/05302024_0804/.openssl/include \
 	-I objs
 
 
@@ -133,7 +133,7 @@ HTTP_INCS = -I src/http \
 	-I src/http/v3
 
 
-ADDON_DEPS = $(CORE_DEPS)  brotli/deps/brotli/c/include/brotli/encode.h               brotli/deps/brotli/c/include/brotli/port.h               brotli/deps/brotli/c/include/brotli/types.h $(HTTP_DEPS)
+ADDON_DEPS = $(CORE_DEPS)  brotli//deps/brotli/c/include/brotli/encode.h               brotli//deps/brotli/c/include/brotli/port.h               brotli//deps/brotli/c/include/brotli/types.h $(HTTP_DEPS)
 
 
 build:	binary modules manpage
@@ -408,7 +408,7 @@ objs/nginx:	objs/src/core/nginx.o \
 	objs/src/http/modules/ngx_http_ssl_module.o \
 	objs/src/http/modules/ngx_http_fastcgi_module.o \
 	objs/ngx_modules.o \
-	-ldl -lpthread -lpthread -lpcre /home/monty/src/grewalcc/third_party/libressl/git/libressl-Latest-Git-06012024_1000am/.openssl/lib/libssl.a /home/monty/src/grewalcc/third_party/libressl/git/libressl-Latest-Git-06012024_1000am/.openssl/lib/libcrypto.a -ldl -lpthread -lz \
+	-ldl -lpthread -lpthread -lpcre /home/monty/src/grewalcc/third_party/openssl/github/05302024_0804/.openssl/lib/libssl.a /home/monty/src/grewalcc/third_party/openssl/github/05302024_0804/.openssl/lib/libcrypto.a -ldl -lpthread -lz \
 	-Wl,-E
 	
 
@@ -1354,7 +1354,7 @@ objs/ngx_http_brotli_filter_module.so:	objs/addon/filter/ngx_http_brotli_filter_
 	$(LINK) -o objs/ngx_http_brotli_filter_module.so \
 	objs/addon/filter/ngx_http_brotli_filter_module.o \
 	objs/ngx_http_brotli_filter_module_modules.o \
-	-Lbrotli/deps/brotli/c/../out -lbrotlienc -lbrotlicommon -lm \
+	-Lbrotli//deps/brotli/c/../out -lbrotlienc -lbrotlicommon -lm \
 	-shared
 
 
@@ -1366,10 +1366,10 @@ objs/ngx_http_brotli_filter_module_modules.o:	$(CORE_DEPS) \
 
 
 objs/addon/filter/ngx_http_brotli_filter_module.o:	$(ADDON_DEPS) \
-	brotli/filter/ngx_http_brotli_filter_module.c
+	brotli//filter/ngx_http_brotli_filter_module.c
 	$(CC) -c -fPIC $(CFLAGS) $(ALL_INCS) \
 		-o objs/addon/filter/ngx_http_brotli_filter_module.o \
-		brotli/filter/ngx_http_brotli_filter_module.c
+		brotli//filter/ngx_http_brotli_filter_module.c
 
 
 modules:	objs/ngx_http_brotli_static_module.so
@@ -1391,16 +1391,16 @@ objs/ngx_http_brotli_static_module_modules.o:	$(CORE_DEPS) \
 
 
 objs/addon/static/ngx_http_brotli_static_module.o:	$(ADDON_DEPS) \
-	brotli/static/ngx_http_brotli_static_module.c
+	brotli//static/ngx_http_brotli_static_module.c
 	$(CC) -c -fPIC $(CFLAGS) $(ALL_INCS) \
 		-o objs/addon/static/ngx_http_brotli_static_module.o \
-		brotli/static/ngx_http_brotli_static_module.c
+		brotli//static/ngx_http_brotli_static_module.c
 
 
-/home/monty/src/grewalcc/third_party/libressl/git/libressl-Latest-Git-06012024_1000am/.openssl/include/openssl/ssl.h:	objs/Makefile
-	cd /home/monty/src/grewalcc/third_party/libressl/git/libressl-Latest-Git-06012024_1000am \
+/home/monty/src/grewalcc/third_party/openssl/github/05302024_0804/.openssl/include/openssl/ssl.h:	objs/Makefile
+	cd /home/monty/src/grewalcc/third_party/openssl/github/05302024_0804 \
 	&& if [ -f Makefile ]; then $(MAKE) clean; fi \
-	&& ./config --prefix=/home/monty/src/grewalcc/third_party/libressl/git/libressl-Latest-Git-06012024_1000am/.openssl no-shared no-threads enable-brotli no-deprecated enable-fips no-tests enable-tfo zlib \
+	&& ./config --prefix=/home/monty/src/grewalcc/third_party/openssl/github/05302024_0804/.openssl no-shared no-threads enable-brotli no-deprecated enable-fips no-tests enable-tfo zlib \
 	&& $(MAKE) \
 	&& $(MAKE) install_sw LIBDIR=lib
 
@@ -1408,77 +1408,77 @@ objs/addon/static/ngx_http_brotli_static_module.o:	$(ADDON_DEPS) \
 manpage:	objs/nginx.8
 
 objs/nginx.8:	man/nginx.8 objs/ngx_auto_config.h
-	sed -e "s|%%PREFIX%%|/etc/nginx/|" \
-		-e "s|%%PID_PATH%%|/etc/nginx//logs/nginx.pid|" \
-		-e "s|%%CONF_PATH%%|/etc/nginx//conf/nginx.conf|" \
-		-e "s|%%ERROR_LOG_PATH%%|/etc/nginx//logs/error.log|" \
+	sed -e "s|%%PREFIX%%|/etc/nginx|" \
+		-e "s|%%PID_PATH%%|/etc/nginx/logs/nginx.pid|" \
+		-e "s|%%CONF_PATH%%|/etc/nginx/conf/nginx.conf|" \
+		-e "s|%%ERROR_LOG_PATH%%|/etc/nginx/logs/error.log|" \
 		< man/nginx.8 > $@
 
 install:	build 
-	test -d '$(DESTDIR)/etc/nginx/' || mkdir -p '$(DESTDIR)/etc/nginx/'
+	test -d '$(DESTDIR)/etc/nginx' || mkdir -p '$(DESTDIR)/etc/nginx'
 
 	test -d '$(DESTDIR)/etc/nginx' \
 		|| mkdir -p '$(DESTDIR)/etc/nginx'
-	test ! -f '$(DESTDIR)/etc/nginx/sbin/' \
-		|| mv '$(DESTDIR)/etc/nginx/sbin/' \
-			'$(DESTDIR)/etc/nginx/sbin/.old'
-	cp objs/nginx '$(DESTDIR)/etc/nginx/sbin/'
+	test ! -f '$(DESTDIR)/etc/nginx/sbin' \
+		|| mv '$(DESTDIR)/etc/nginx/sbin' \
+			'$(DESTDIR)/etc/nginx/sbin.old'
+	cp objs/nginx '$(DESTDIR)/etc/nginx/sbin'
 
-	test -d '$(DESTDIR)/etc/nginx//conf' \
-		|| mkdir -p '$(DESTDIR)/etc/nginx//conf'
+	test -d '$(DESTDIR)/etc/nginx/conf' \
+		|| mkdir -p '$(DESTDIR)/etc/nginx/conf'
 
-	cp conf/koi-win '$(DESTDIR)/etc/nginx//conf'
-	cp conf/koi-utf '$(DESTDIR)/etc/nginx//conf'
-	cp conf/win-utf '$(DESTDIR)/etc/nginx//conf'
+	cp conf/koi-win '$(DESTDIR)/etc/nginx/conf'
+	cp conf/koi-utf '$(DESTDIR)/etc/nginx/conf'
+	cp conf/win-utf '$(DESTDIR)/etc/nginx/conf'
 
-	test -f '$(DESTDIR)/etc/nginx//conf/mime.types' \
-		|| cp conf/mime.types '$(DESTDIR)/etc/nginx//conf'
-	cp conf/mime.types '$(DESTDIR)/etc/nginx//conf/mime.types.default'
+	test -f '$(DESTDIR)/etc/nginx/conf/mime.types' \
+		|| cp conf/mime.types '$(DESTDIR)/etc/nginx/conf'
+	cp conf/mime.types '$(DESTDIR)/etc/nginx/conf/mime.types.default'
 
-	test -f '$(DESTDIR)/etc/nginx//conf/fastcgi_params' \
-		|| cp conf/fastcgi_params '$(DESTDIR)/etc/nginx//conf'
+	test -f '$(DESTDIR)/etc/nginx/conf/fastcgi_params' \
+		|| cp conf/fastcgi_params '$(DESTDIR)/etc/nginx/conf'
 	cp conf/fastcgi_params \
-		'$(DESTDIR)/etc/nginx//conf/fastcgi_params.default'
+		'$(DESTDIR)/etc/nginx/conf/fastcgi_params.default'
 
-	test -f '$(DESTDIR)/etc/nginx//conf/fastcgi.conf' \
-		|| cp conf/fastcgi.conf '$(DESTDIR)/etc/nginx//conf'
-	cp conf/fastcgi.conf '$(DESTDIR)/etc/nginx//conf/fastcgi.conf.default'
+	test -f '$(DESTDIR)/etc/nginx/conf/fastcgi.conf' \
+		|| cp conf/fastcgi.conf '$(DESTDIR)/etc/nginx/conf'
+	cp conf/fastcgi.conf '$(DESTDIR)/etc/nginx/conf/fastcgi.conf.default'
 
-	test -f '$(DESTDIR)/etc/nginx//conf/uwsgi_params' \
-		|| cp conf/uwsgi_params '$(DESTDIR)/etc/nginx//conf'
+	test -f '$(DESTDIR)/etc/nginx/conf/uwsgi_params' \
+		|| cp conf/uwsgi_params '$(DESTDIR)/etc/nginx/conf'
 	cp conf/uwsgi_params \
-		'$(DESTDIR)/etc/nginx//conf/uwsgi_params.default'
+		'$(DESTDIR)/etc/nginx/conf/uwsgi_params.default'
 
-	test -f '$(DESTDIR)/etc/nginx//conf/scgi_params' \
-		|| cp conf/scgi_params '$(DESTDIR)/etc/nginx//conf'
+	test -f '$(DESTDIR)/etc/nginx/conf/scgi_params' \
+		|| cp conf/scgi_params '$(DESTDIR)/etc/nginx/conf'
 	cp conf/scgi_params \
-		'$(DESTDIR)/etc/nginx//conf/scgi_params.default'
+		'$(DESTDIR)/etc/nginx/conf/scgi_params.default'
 
-	test -f '$(DESTDIR)/etc/nginx//conf/nginx.conf' \
-		|| cp conf/nginx.conf '$(DESTDIR)/etc/nginx//conf/nginx.conf'
-	cp conf/nginx.conf '$(DESTDIR)/etc/nginx//conf/nginx.conf.default'
+	test -f '$(DESTDIR)/etc/nginx/conf/nginx.conf' \
+		|| cp conf/nginx.conf '$(DESTDIR)/etc/nginx/conf/nginx.conf'
+	cp conf/nginx.conf '$(DESTDIR)/etc/nginx/conf/nginx.conf.default'
 
-	test -d '$(DESTDIR)/etc/nginx//logs' \
-		|| mkdir -p '$(DESTDIR)/etc/nginx//logs'
+	test -d '$(DESTDIR)/etc/nginx/logs' \
+		|| mkdir -p '$(DESTDIR)/etc/nginx/logs'
 
-	test -d '$(DESTDIR)/etc/nginx//logs' \
-		|| mkdir -p '$(DESTDIR)/etc/nginx//logs'
+	test -d '$(DESTDIR)/etc/nginx/logs' \
+		|| mkdir -p '$(DESTDIR)/etc/nginx/logs'
 
-	test -d '$(DESTDIR)/etc/nginx//html' \
-		|| cp -R html '$(DESTDIR)/etc/nginx/'
+	test -d '$(DESTDIR)/etc/nginx/html' \
+		|| cp -R html '$(DESTDIR)/etc/nginx'
 
-	test -d '$(DESTDIR)/etc/nginx//logs' \
-		|| mkdir -p '$(DESTDIR)/etc/nginx//logs'
+	test -d '$(DESTDIR)/etc/nginx/logs' \
+		|| mkdir -p '$(DESTDIR)/etc/nginx/logs'
 
-	test -d '$(DESTDIR)/etc/nginx//modules' \
-		|| mkdir -p '$(DESTDIR)/etc/nginx//modules'
+	test -d '$(DESTDIR)/etc/nginx/modules' \
+		|| mkdir -p '$(DESTDIR)/etc/nginx/modules'
 
-	test ! -f '$(DESTDIR)/etc/nginx//modules/ngx_http_brotli_filter_module.so' \
-		|| mv '$(DESTDIR)/etc/nginx//modules/ngx_http_brotli_filter_module.so' \
-			'$(DESTDIR)/etc/nginx//modules/ngx_http_brotli_filter_module.so.old'
-	cp objs/ngx_http_brotli_filter_module.so '$(DESTDIR)/etc/nginx//modules/ngx_http_brotli_filter_module.so'
+	test ! -f '$(DESTDIR)/etc/nginx/modules/ngx_http_brotli_filter_module.so' \
+		|| mv '$(DESTDIR)/etc/nginx/modules/ngx_http_brotli_filter_module.so' \
+			'$(DESTDIR)/etc/nginx/modules/ngx_http_brotli_filter_module.so.old'
+	cp objs/ngx_http_brotli_filter_module.so '$(DESTDIR)/etc/nginx/modules/ngx_http_brotli_filter_module.so'
 
-	test ! -f '$(DESTDIR)/etc/nginx//modules/ngx_http_brotli_static_module.so' \
-		|| mv '$(DESTDIR)/etc/nginx//modules/ngx_http_brotli_static_module.so' \
-			'$(DESTDIR)/etc/nginx//modules/ngx_http_brotli_static_module.so.old'
-	cp objs/ngx_http_brotli_static_module.so '$(DESTDIR)/etc/nginx//modules/ngx_http_brotli_static_module.so'
+	test ! -f '$(DESTDIR)/etc/nginx/modules/ngx_http_brotli_static_module.so' \
+		|| mv '$(DESTDIR)/etc/nginx/modules/ngx_http_brotli_static_module.so' \
+			'$(DESTDIR)/etc/nginx/modules/ngx_http_brotli_static_module.so.old'
+	cp objs/ngx_http_brotli_static_module.so '$(DESTDIR)/etc/nginx/modules/ngx_http_brotli_static_module.so'

@@ -10,6 +10,7 @@
 
 #include <ngx_config.h>
 #include <ngx_core.h>
+#include "ngx_event_quic_types.h"
 
 #include <ngx_event_quic_transport.h>
 

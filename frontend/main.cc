@@ -8,13 +8,15 @@
 #include <string>
 #include <iostream>
 #include "fcgio.h"
+#include <google/protobuf/message.h>
 #include "mariadb/mysql.h"
 #include "../security/sanitizer.h"
 #include "../security/security.h"
 
-MYSQL* initializeMySQL();
+MYSQL* initializeMySQL(char*);
 bool setHttpRequestLog(MYSQL* mysql, const FCGX_Request& request);
 FCGX_Request initializeFCGXRequest();
+char* getLatestTableRowValueFor(MYSQL*, const char*);
 
 int main(int argc, char *argv[]) {
     // Backup the stdio streambufs
@@ -28,7 +30,8 @@ int main(int argc, char *argv[]) {
     FCGX_InitRequest(&request, 0, 0);
 
     //Initialize a MySQL connection outside the while loop
-    MYSQL* mysql_ = initializeMySQL();
+    char* user_ = "http_writer";
+    MYSQL* mysql_ = initializeMySQL(user_);
 
 
     // Process the incoming http_request
@@ -40,74 +43,52 @@ int main(int argc, char *argv[]) {
         std::cout.rdbuf(&cout_fcgi_streambuf);
         std::cerr.rdbuf(&cerr_fcgi_streambuf);
 
-        // Extract HTTP request parameters
-        const char* accept_ = FCGX_GetParam("HTTP_ACCEPT", request.envp);
-        const char* accept_encoding_ = FCGX_GetParam("HTTP_ACCEPT_ENCODING", request.envp);
-        const char* accept_language_ = FCGX_GetParam("HTTP_ACCEPT_LANGUAGE", request.envp);
-        const char* connection_ = FCGX_GetParam("HTTP_CONNECTION", request.envp);
-        const char* content_length_ = FCGX_GetParam("CONTENT_LENGTH", request.envp);
-        const char* content_type_ = FCGX_GetParam("CONTENT_TYPE", request.envp);
-        const char* cookie_ = FCGX_GetParam("HTTP_COOKIE", request.envp);
-        const char* document_uri_ = FCGX_GetParam("DOCUMENT_URI", request.envp);
-        const char* http_host_ = FCGX_GetParam("HTTP_HOST", request.envp);
-        const char* http_method_ = FCGX_GetParam("REQUEST_METHOD", request.envp); // Alias for request_method
-        const char* protocol_ = FCGX_GetParam("SERVER_PROTOCOL", request.envp); // Alias for server_protocol
-        const char* query_string_ = FCGX_GetParam("QUERY_STRING", request.envp);
-        const char* referer_ = FCGX_GetParam("HTTP_REFERER", request.envp);
+	const char* query_string_ = FCGX_GetParam("QUERY_STRING", request.envp);
         const char* remote_addr_ = FCGX_GetParam("REMOTE_ADDR", request.envp);
-        const char* remote_port_ = FCGX_GetParam("REMOTE_PORT", request.envp);
-        const char* request_method_ = FCGX_GetParam("REQUEST_METHOD", request.envp);
         const char* request_uri_ = FCGX_GetParam("REQUEST_URI", request.envp);
-        const char* server_addr_ = FCGX_GetParam("SERVER_ADDR", request.envp);
-        const char* server_port_ = FCGX_GetParam("SERVER_PORT", request.envp);
         const char* user_agent_ = FCGX_GetParam("HTTP_USER_AGENT", request.envp);
 
-        const char* ip_address_ = remote_addr_;
-        const char* port_ = remote_port_;
-        const char* hostname_ = http_host_;
-        const char* http_method_alias_ = request_method_;
-        const char* uri_ = document_uri_;
-        const char* protocol_alias_ = protocol_;
+        grewal::Security* security_ = new grewal::Security();
 
-        grewal::Sanitizer* sanitizer_ = new grewal::Sanitizer();
+ /*       grewal::Sanitizer* sanitizer_ = new grewal::Sanitizer();
         std::map<std::string, std::string> httpPostParametersMap;
         std::string content = sanitizer_->getRequestContent(request);
         httpPostParametersMap = sanitizer_->getContentVariablesMap(content);
         grewal::fcgi_param fcgi_ = sanitizer_->getFCGIParameters(request);
         delete sanitizer_;
-
         grewal::Security* security_ = new grewal::Security();
-
         // check for robots.txt
         if (security_->isRobotsTxt(request_uri_)) {
             std::cout << "Content-type: text/plain\r\n\r\n" << std::endl;
             std::cout << "User-agent: *\nAllow: /" << std::endl;
         } else { // ***** HOMEPAGE AND ALL ELSE *****
-
+*/
             /* Homepage */
             std::cout << "Content-type: text/html\r\n\r\n" << std::endl;
             std::cout << "<meta name='viewport' content='width=device-width, initial-scale=1.0/'>";
-            std::cout << "<title>" << http_host_ << "</title></head>"
+            std::cout << "<title>" << request_uri_ << "</title></head>"
                 << "<body><center>Grewal.cc";
-            if (security_->isInternal(remote_port_)) {
+            if (security_->isInternal(remote_addr_)) {
                 std::cout << "<br><br><font color='red'>INTERNAL</font><br><br>";
             }
-            std::cout << "<br><br><br><br><br><b>IP: </b>" << remote_addr_
-                << "<br><br><b>user-agent: </b>" << user_agent_
-                << "<br><br><b>server protocol</b>: " << protocol_
-                << "<br><br><b>sub-domain: </b>: " << http_host_ << std::endl;
-
+            //    std::cout << "<br><br><br><br><br><b>IP: </b>" << remote_addr_
+            //    << "<br><br><b>user-agent: </b>" << user_agent_
+            //    << "<br><br><b>server protocol</b>: " << protocol_
+            //    << "<br><br><b>sub-domain: </b>: " << http_host_ << std::endl;
 
 	    // Write the http request logs to mariadb
-            mysql_ = initializeMySQL();
+            mysql_ = initializeMySQL(user_);
             bool writeSuccess = setHttpRequestLog(mysql_, request);
             std::cout << (writeSuccess ? "<br>SUCCESS" : "<br>FAILURE") << std::endl;
-
-            mysql_close(mysql_);
-            std::cout << "</center></body></html>" << std::endl;
-
-        } // end else
+	    user_ = "get_log";
+             // Call the function to get the latest row from a table
+        //char *latestRow = getLatestTableRowValueFor(initializeMySQL(user_), "http_request");
+	    delete(security_);
     } // end while
+
+      // esure mysql connection is closed
+      mysql_close(mysql_);
+
     return 0;
 } // end main
 
@@ -117,7 +98,7 @@ FCGX_Request initializeFCGXRequest() {
     return request;
 }
 
-MYSQL* initializeMySQL() {
+MYSQL* initializeMySQL(char* mariadbUser_) {
     MYSQL* mysql = mysql_init(nullptr);
     if (!mysql) {
         std::cout << "Error: Failed to initialize MySQL" << std::endl;
@@ -126,7 +107,7 @@ MYSQL* initializeMySQL() {
     }
 
     try {
-        if (!mysql_real_connect(mysql, "localhost", "http_writer", "grewal_http_write_logs_password", "grewal", 0, nullptr, 0)) {
+        if (!mysql_real_connect(mysql, "localhost", mariadbUser_, "grewal_http_write_logs_password", "grewal", 0, nullptr, 0)) {
             throw std::runtime_error(std::string("Error: Failed to connect to database: ") + mysql_error(mysql));
         }
     } catch (const std::runtime_error& e) {
@@ -134,7 +115,6 @@ MYSQL* initializeMySQL() {
         mysql_close(mysql);
         return nullptr;
     }
-
     return mysql;
 }
 /*
@@ -246,3 +226,62 @@ bool setHttpRequestLog(MYSQL* mysql_, const FCGX_Request& request) {
     //mysql_close(mysql_);
     return true;
 }
+
+char* getLatestTableRowValueFor(MYSQL* connection, const char* tableName) {
+    MYSQL_RES *result;
+    MYSQL_ROW row;
+    char query[1000]; // Adjust the size as per your needs
+    sprintf(query, "SELECT * FROM %s ORDER BY ID DESC LIMIT 1", tableName);
+
+    // Execute the query
+    if (mysql_query(connection, query)) {
+        fprintf(stderr, "Error querying database: %s\n", mysql_error(connection));
+        return NULL;
+    }
+
+    // Get the result set
+    result = mysql_store_result(connection);
+    if (!result) {
+        fprintf(stderr, "Error fetching result: %s\n", mysql_error(connection));
+        return NULL;
+    }
+
+    // Fetch the row data
+    row = mysql_fetch_row(result);
+    if (!row) {
+        // No rows returned
+        mysql_free_result(result);
+        return NULL;
+    }
+
+    // Format the row data into a string representation
+    unsigned long *lengths = mysql_fetch_lengths(result);
+    unsigned int num_fields = mysql_num_fields(result);
+    unsigned long total_length = 0;
+    for (unsigned int i = 0; i < num_fields; ++i) {
+        if (lengths[i] == 0) continue; // Handle NULL values if necessary
+        total_length += lengths[i] + 2; // Add 2 for separating spaces
+    }
+
+    char *rowString = (char*)malloc(total_length + 1); // +1 for null terminator
+    if (!rowString) {
+        fprintf(stderr, "Error allocating memory\n");
+        mysql_free_result(result);
+        return NULL;
+    }
+
+    char *pos = rowString;
+    for (unsigned int i = 0; i < num_fields; ++i) {
+        if (lengths[i] == 0) continue; // Handle NULL values if necessary
+        sprintf(pos, "%s ", row[i]);
+        pos += lengths[i] + 1; // +1 for separating space
+    }
+
+    *pos = '\0'; // Null-terminate the string
+
+    // Free the result set
+    mysql_free_result(result);
+
+    return rowString;
+}
+
