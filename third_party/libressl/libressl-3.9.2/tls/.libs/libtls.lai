@@ -17,7 +17,7 @@ old_library='libtls.a'
 inherited_linker_flags=''
 
 # Libraries that this one depends upon.
-dependency_libs=' /home/monty/src/grewalcc/third_party/nginx/stable/nginx-1.26.0/../../../libressl/libressl-3.9.2/.openssl/lib/libssl.la /home/monty/src/grewalcc/third_party/nginx/stable/nginx-1.26.0/../../../libressl/libressl-3.9.2/.openssl/lib/libcrypto.la -lresolv -lpthread'
+dependency_libs=' /home/monty/src/grewalcc/third_party/libressl/libressl-3.9.2/.openssl/lib/libssl.la /home/monty/src/grewalcc/third_party/libressl/libressl-3.9.2/.openssl/lib/libcrypto.la -lresolv -lpthread'
 
 # Names of additional weak libraries provided by this library
 weak_library_names=''
@@ -38,4 +38,4 @@ dlopen=''
 dlpreopen=''
 
 # Directory that this library needs to be installed in:
-libdir='/home/monty/src/grewalcc/third_party/nginx/stable/nginx-1.26.0/../../../libressl/libressl-3.9.2/.openssl/lib'
+libdir='/home/monty/src/grewalcc/third_party/libressl/libressl-3.9.2/.openssl/lib'

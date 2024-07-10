@@ -1,4 +1,4 @@
-#define NGX_CONFIGURE " --prefix=/etc/nginx/ --sbin-path=/etc/nginx/sbin/ --build=gcc_gcloud_06012024_libre_LATEST_GIT --with-http_ssl_module --with-http_v3_module --with-pcre --with-openssl=/home/monty/src/grewalcc/third_party/libressl/git/libressl-Latest-Git-06012024_1000am --with-openssl-opt='enable-brotli no-deprecated enable-fips no-tests enable-tfo zlib' --with-threads --without-mail_pop3_module --without-mail_imap_module --without-mail_smtp_module --without-http_memcached_module --without-http_userid_module --without-http_auth_basic_module --without-http_autoindex_module --without-http_browser_module --without-http_geo_module --without-http_map_module --without-http_split_clients_module --without-http_referer_module --without-http_proxy_module --without-http_uwsgi_module --without-http_scgi_module --without-http_grpc_module --without-http_memcached_module --without-http_limit_conn_module --without-http_limit_req_module --without-http_empty_gif_module --without-http_browser_module --without-http_upstream_hash_module --without-http_upstream_ip_hash_module --without-http_upstream_least_conn_module --without-http_upstream_random_module --without-http_upstream_keepalive_module --without-http_upstream_zone_module --with-compat --add-dynamic-module=brotli"
+#define NGX_CONFIGURE " --with-cc-opt=-Wno-error=type-limits --prefix=/etc/nginx --sbin-path=/etc/nginx/sbin --build=gcc_gcloud_06302024_OPENSSL_GIT_06302024 --with-http_ssl_module --with-http_v3_module --with-pcre --with-openssl=/home/monty/src/grewalcc/third_party/openssl/github/05302024_0804 --with-openssl-opt='enable-brotli no-deprecated enable-fips no-tests enable-tfo zlib' --with-threads --without-mail_pop3_module --without-mail_imap_module --without-mail_smtp_module --without-http_memcached_module --without-http_userid_module --without-http_auth_basic_module --without-http_autoindex_module --without-http_browser_module --without-http_geo_module --without-http_map_module --without-http_split_clients_module --without-http_referer_module --without-http_proxy_module --without-http_uwsgi_module --without-http_scgi_module --without-http_grpc_module --without-http_memcached_module --without-http_limit_conn_module --without-http_limit_req_module --without-http_empty_gif_module --without-http_browser_module --without-http_upstream_hash_module --without-http_upstream_ip_hash_module --without-http_upstream_least_conn_module --without-http_upstream_random_module --without-http_upstream_keepalive_module --without-http_upstream_zone_module --with-compat --add-dynamic-module=brotli/"
 
 #ifndef NGX_COMPILER
 #define NGX_COMPILER  "gcc 10.2.1 20210110 (Debian 10.2.1-6) "
@@ -529,7 +529,7 @@
 
 
 #ifndef NGX_PREFIX
-#define NGX_PREFIX  "/etc/nginx//"
+#define NGX_PREFIX  "/etc/nginx/"
 #endif
 
 
@@ -539,7 +539,7 @@
 
 
 #ifndef NGX_SBIN_PATH
-#define NGX_SBIN_PATH  "/etc/nginx/sbin/"
+#define NGX_SBIN_PATH  "/etc/nginx/sbin"
 #endif
 
 
@@ -614,6 +614,6 @@
 
 
 #ifndef NGX_BUILD
-#define NGX_BUILD  "gcc_gcloud_06012024_libre_LATEST_GIT"
+#define NGX_BUILD  "gcc_gcloud_06302024_OPENSSL_GIT_06302024"
 #endif
 

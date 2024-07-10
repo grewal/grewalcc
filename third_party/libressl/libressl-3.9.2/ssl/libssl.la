@@ -38,4 +38,4 @@ dlopen=''
 dlpreopen=''
 
 # Directory that this library needs to be installed in:
-libdir='/home/monty/src/grewalcc/third_party/nginx/stable/nginx-1.26.0/../../../libressl/libressl-3.9.2/.openssl/lib'
+libdir='/home/monty/src/grewalcc/third_party/libressl/libressl-3.9.2/.openssl/lib'

@@ -1,7 +1,0 @@
-libdir=/home/monty/src/grewalcc/third_party/openssl/openssl-3.3.0
-includedir=/home/monty/src/grewalcc/third_party/openssl/openssl-3.3.0/include
-
-Name: OpenSSL
-Description: Secure Sockets Layer and cryptography libraries and tools
-Version: 3.3.0
-Requires: libssl libcrypto

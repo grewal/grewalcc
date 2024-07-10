@@ -118,6 +118,7 @@ void ngx_quic_finalize_connection(ngx_connection_t *c, ngx_uint_t err,
     const char *reason);
 void ngx_quic_shutdown_connection(ngx_connection_t *c, ngx_uint_t err,
     const char *reason);
+//ngx_int_t ngx_quic_shutdown_stream(ngx_connection_t *c, ngx_uint_t sid);
 ngx_int_t ngx_quic_reset_stream(ngx_connection_t *c, ngx_uint_t err);
 ngx_int_t ngx_quic_shutdown_stream(ngx_connection_t *c, int how);
 void ngx_quic_cancelable_stream(ngx_connection_t *c);

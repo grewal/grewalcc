@@ -1,6 +1,6 @@
 #libssl pkg-config source file
 
-prefix=/home/monty/src/grewalcc/third_party/nginx/stable/nginx-1.26.0/../../../libressl/libressl-3.9.2/.openssl
+prefix=/home/monty/src/grewalcc/third_party/libressl/libressl-3.9.2/.openssl
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include
