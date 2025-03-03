@@ -1,5 +1,5 @@
 // Author: Yadwinder Grewal
-// Copyright: 2021 Grewal.cc
+// Copyright: 2025 Grewal.cc
 
 #ifndef GREWAL_SECURITY_H
 #define GREWAL_SECURITY_H

@@ -4,30 +4,36 @@
 BINARY_NAME = grewal
 CC = cc
 CXX = g++
-OBJS = main.o security.o sanitizer.o # dispatcher.o
-CXXFILES = main.cc ../security/security.cc ../security/sanitizer.cc # ../server/dispatcher.cc
-#INCLUDE_PATH = -I/usr/local/include -I/usr/include/mysql
-INCLUDE_PATH = -I/usr/local/include -I/usr/include/mysql -I/usr/include/google/protobuf
+OBJS = main.o security.o mysql_util.o
+CXXFILES = main.cc ../security/security.cc ../db/mysql_util.cc
+CFILES = 
+INCLUDE_PATH = -I/usr/local/include -I/home/monty/src/gcc/third_party/mariadb/connector/include/
 CFLAGS = -Wall -c -v -g
-COMPILE_FLAGS = -c -v -std=c++1z -Wall -static
-LDFLAGS = -lfcgi -lfcgi++ -lmysqlclient -lprotobuf
-GOOGLE_FLAGS = -lre2 -lpthread -lcrypto -lssl
+COMPILE_FLAGS = -c -v -Wall
+LDFLAGS = -lfcgi -lfcgi++ -L/home/monty/src/gcc/third_party/mariadb/connector/lib/mariadb -lmariadbcpp
+GOOGLE_FLAGS = -lre2 -lpthread -lcrypto -lssl -lgflags
 NGINX_BIN = /etc/nginx/sbin
 REMOVE = rm -rf
 
-$(BINARY_NAME) : $(OBJS)
+# Default target to build the binary
+$(BINARY_NAME): $(OBJS)
 	# Compile the binary
-	$(CXX) $(OBJS) $(LDFLAGS) $(GOOGLE_FLAGS) -o $(@)
+	$(CXX) $(OBJS) $(LDFLAGS) $(GOOGLE_FLAGS) -o $@
 
-%.o:	%.cc
-	$(CXX) $(COMPILE_FLAGS) $(GOOGLE_FLAGS) $(CXXFILES) $(INCLUDE_PATH) $<
+# Rule to compile .cc files to .o
+%.o: %.cc
+	$(CXX) $(COMPILE_FLAGS) $(CXXFILES) $(GOOGLE_FLAGS) $(INCLUDE_PATH) $<
 
-%.o:	%.c
-	$(CC) $(CFLAGS) $(CFILES) $(INCLUDE_PATH)
+# Rule to compile .c files to .o
+%.o: %.c
+	$(CC) $(CFLAGS) $(INCLUDE_PATH) $<
 
-clean :
+# Clean the project
+clean:
 	$(REMOVE) $(BINARY_NAME)
 	$(REMOVE) $(OBJS)
 
-install :
+# Install the binary to NGINX_BIN
+install:
+	sudo killall $(BINARY_NAME)
 	cp $(BINARY_NAME) $(NGINX_BIN)
