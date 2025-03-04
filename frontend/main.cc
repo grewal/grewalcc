@@ -1,10 +1,7 @@
-/*  Copyright 2024 Grewal Inc.  All Rights Reserved.
-    Author:  Yadwinder Grewal (ygrewal@gmail.com)
-*/
-
 #include <stdio.h>
 #include "fcgio.h"
 #include "../security/security.h"
+#include <ctemplate/template.h>
 
 using namespace std;
 
@@ -38,7 +35,7 @@ int main(int argc, char *argv[]) {
         grewal::Security* security_ = new grewal::Security();
 
         // check for robots.txt
-        if (security_ -> isRobotsTxt(request_uri_)) {
+        if (security_->isRobotsTxt(request_uri_)) {
             std::cout << "Content-type: text/plain\r\n\r\n" << std::endl;
             std::cout << "User-agent: *\nAllow: /" << std::endl;
         }
@@ -46,18 +43,21 @@ int main(int argc, char *argv[]) {
         else {  // ***** HOMEPAGE AND ALL ELSE *****
 
             /* Homepage */
-            std::cout << "Content-type: text/html\r\n\r\n" << std::endl;
-            std::cout << "<meta name='viewport' content='width=device-width, initial-scale=1.0/'>";
-            //std::cout << "<head><link rel='shortcut icon' href='https://sites.google.com/site/ygrewal/favico.gif' type='image/x-icon />";
-            std::cout << "<title>" << http_host_ << "</title></head>"
-                      << "<body><center>Grewal.cc";
+            ctemplate::TemplateDictionary dict("home_general");
+            dict.SetValue("HTTP_HOST", http_host_);
+            dict.SetValue("REMOTE_IP", remote_ip_);
+            dict.SetValue("USER_AGENT", user_agent_);
+            dict.SetValue("SUB_DOMAIN", security_->getSubDomain(http_host_));
+
             if (security_->isInternal(remote_ip_)) {
-                std::cout << "<br><br><font color='red'>INTERNAL</font><br><br>";
+                dict.ShowSection("INTERNAL");
             }
-            std::cout << "<br><br>IP: </b>" << remote_ip_
-                      << "<br><br><b>user-agent: </b>" << user_agent_
-                      << "<br><br><b>sub-domain: </b>" << security_->getSubDomain(http_host_);
-            std::cout << "</center></body></html>" << std::endl;
+
+            std::string output;
+            ctemplate::ExpandTemplate("templates/home_general.tpl", ctemplate::DO_NOT_STRIP, &dict, &output);
+
+            std::cout << "Content-type: text/html\r\n\r\n" << output;
+
             delete security_;
 
         }  // end HOMEPAGE
