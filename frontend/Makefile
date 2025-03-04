@@ -11,7 +11,7 @@ INCLUDE_PATH = -I/usr/local/include -I/home/monty/src/gcc/third_party/mariadb/co
 CFLAGS = -Wall -c -v -g
 COMPILE_FLAGS = -c -v -Wall
 LDFLAGS = -lfcgi -lfcgi++ -L/home/monty/src/gcc/third_party/mariadb/connector/lib/mariadb -lmariadbcpp
-GOOGLE_FLAGS = -lre2 -lpthread -lcrypto -lssl -lgflags
+GOOGLE_FLAGS = -lre2 -lpthread -lcrypto -lssl -lgflags -lctemplate_nothreads
 NGINX_BIN = /etc/nginx/sbin
 REMOVE = rm -rf
 

@@ -8,7 +8,7 @@ namespace grewal {
   Security::Security() {}
 
   bool Security::isInternal(const char *ipToCheck_) const {
-    return re2::RE2::PartialMatch(ipToCheck_, "185.169.0.201");
+    return re2::RE2::PartialMatch(ipToCheck_, "^185.169.0");
   }
 
   bool Security::isRobotsTxt(const char *url_) const {
