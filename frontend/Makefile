@@ -1,53 +1,103 @@
 # Author: Yadwinder Grewal
 # Copyright: 2024 Grewal, Inc.
 
+# Project Configuration
 BINARY_NAME = grewal
+GIT_CLIENT = gcc-gem-a
+
+# Compiler and Flags
 CC = cc
 CXX = g++
-OBJS = main.o security.o mysql_util.o
-GIT_CLIENT = gcc-gem-a
-CXXFILES = main.cc ../security/security.cc ../db/mysql_util.cc
-CFILES = 
-INCLUDE_PATH = -I/usr/include -I/usr/local/include -I/home/monty/src/$(GIT_CLIENT)/third_party/mariadb/connector/include/ -I/usr/local/include/gtest
 CFLAGS = -Wall -c -v -g
-COMPILE_FLAGS = -c -v -Wall
-LDFLAGS = -lfcgi -lfcgi++ -L/usr/lib/ -L/home/monty/src/$(GIT_CLIENT)/third_party/mariadb/connector/lib/mariadb -lmariadbcpp -lpthread
-GOOGLE_FLAGS = -lre2 -lcrypto -lssl -lgflags -lctemplate_nothreads -lgtest
+CXXFLAGS = -Wall -c -v
+
+# Include Paths
+INCLUDE_DIRS = \
+	/usr/include \
+	/usr/local/include \
+	/home/monty/src/$(GIT_CLIENT)/third_party/mariadb/connector/include/ \
+	/usr/local/include/gtest \
+	/usr/local/include/grpc
+
+INCLUDE_PATH = $(addprefix -I,$(INCLUDE_DIRS))
+
+# Library Paths and Libraries
+LIBRARY_DIRS = \
+	/usr/lib/ \
+	/home/monty/src/$(GIT_CLIENT)/third_party/mariadb/connector/lib/mariadb \
+	/usr/local/lib
+
+LIBRARY_PATH = $(addprefix -L,$(LIBRARY_DIRS))
+
+LIBRARIES = \
+	fcgi \
+	fcgi++ \
+	mariadbcpp \
+	pthread \
+	re2 \
+	crypto \
+	ssl \
+	gflags \
+	ctemplate_nothreads \
+	gtest \
+	grpc++ \
+	protobuf
+
+LDFLAGS = $(LIBRARY_PATH) $(addprefix -l,$(LIBRARIES))
+
+# Source Files and Objects
+CXX_SOURCES = \
+	main.cc \
+	../security/security.cc \
+	../db/mysql_util.cc \
+	home_general.pb.cc \
+	home_general.grpc.pb.cc
+
+CXX_OBJECTS = $(CXX_SOURCES:.cc=.o)
+
+C_SOURCES =
+C_OBJECTS = $(C_SOURCES:.c=.o)
+
+OBJECTS = $(CXX_OBJECTS) $(C_OBJECTS)
+
+# Test Configuration
+TEST_BINARY = security_test
+TEST_SOURCES = ../security/security_test.cc
+TEST_OBJECTS = $(TEST_SOURCES:.cc=.o)
+
+# Installation Configuration
 NGINX_BIN = /etc/nginx/sbin
-REMOVE = rm -rf
 
-# Default target to build the binary
-$(BINARY_NAME): $(OBJS)
-	# Compile the binary
-	$(CXX) $(OBJS) $(LDFLAGS) $(GOOGLE_FLAGS) -o $@
+# Utility Commands
+RM = rm -rf
 
-# Rule to compile .cc files to .o
+# Targets
+
+.PHONY: all clean install test
+
+all: $(BINARY_NAME)
+
+$(BINARY_NAME): $(OBJECTS)
+	$(CXX) $(OBJECTS) $(LDFLAGS) -o $@
+
 %.o: %.cc
-	$(CXX) $(COMPILE_FLAGS) $(CXXFILES) $(GOOGLE_FLAGS) $(INCLUDE_PATH) $<
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
-# Rule to compile .c files to .o
 %.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDE_PATH) $<
+	$(CC) $(CFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
-# Clean the project
 clean:
-	$(REMOVE) $(BINARY_NAME)
-	$(REMOVE) $(OBJS)
-	$(REMOVE) security_test*
+	$(RM) $(BINARY_NAME) $(OBJECTS) $(TEST_BINARY)
 
-# Install the binary to NGINX_BIN
 install:
 	sudo killall $(BINARY_NAME)
-	cp $(BINARY_NAME) $(NGINX_BIN)
+	sudo cp $(BINARY_NAME) $(NGINX_BIN)
 
-# Build and run the tests
-test: security_test
-	./security_test
+test: $(TEST_BINARY)
+	./$(TEST_BINARY)
 
-# Compile the test binary
-security_test: security_test.o security.o
-	$(CXX) security_test.o security.o $(GOOGLE_FLAGS) -lgtest -lgtest_main -pthread -o $@
+$(TEST_BINARY): $(TEST_OBJECTS) ../security/security.o
+	$(CXX) $(TEST_OBJECTS) ../security/security.o $(LDFLAGS) -lgtest -lgtest_main -pthread -o $@
 
-# Rule to compile the security_test.cc into an object file
-security_test.o: ../security/security_test.cc ../security/security.h
-	$(CXX) $(COMPILE_FLAGS) $(INCLUDE_PATH) $<
+$(TEST_OBJECTS): %.o: %.cc ../security/security.h
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
