@@ -1,0 +1,18 @@
+// home_general.proto
+syntax = "proto3";
+
+package grewal; // Add the namespace here
+
+message HomeGeneralRequest {
+  string http_host = 1;
+  string remote_ip = 2;
+  string user_agent = 3;
+}
+
+message HomeGeneralResponse {
+  string html_output = 1;
+}
+
+service HomeGeneral {  //  Make sure the service is defined!
+  rpc GetHomeGeneral (HomeGeneralRequest) returns (HomeGeneralResponse);
+}
