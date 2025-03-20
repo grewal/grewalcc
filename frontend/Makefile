@@ -9,7 +9,7 @@ GIT_CLIENT = gcc-gem-a
 # --- Compiler and Flags ---
 
 CC = cc
-CXX = clang++  # Use clang++ for C++ projects
+CXX = g++  # Use clang++ for C++ projects
 CXXFLAGS = -Wall -Wextra -g -std=c++17  # Enable warnings, debug info, and C++17
 
 # --- Include Paths ---
@@ -30,30 +30,29 @@ INCLUDE_PATH = $(INCLUDE_DIRS)
 GRPC_LDFLAGS := $(shell pkg-config --libs grpc++ grpc protobuf)
 
 # Other libraries (FastCGI, MariaDB, etc.) - order *still* matters!
+# REMOVE fcgi++ and fcgi if this is ONLY for the gRPC server
 OTHER_LIBS = \
-	     fcgi++ \
-	     fcgi \
-	     mariadbcpp \
-	     re2 \
-	     gflags \
-	     ctemplate_nothreads \
-	     ssl \
-	     crypto \
-	     pthread \
-	     gtest
+		re2 \
+		gflags \
+		ctemplate_nothreads \
+		ssl \
+		crypto \
+		pthread \
+		gtest
 
 # Combine gRPC linker flags with our other libraries, and add stdc++ LAST.
+# REMOVE fcgi++ and fcgi from LDFLAGS if this is ONLY for the gRPC server
 LDFLAGS = $(GRPC_LDFLAGS) $(addprefix -l,$(OTHER_LIBS)) -lstdc++
 
 # --- Source Files ---
 
 CXX_SOURCES = \
-	      main.cc \
-	      ../security/security.cc \
-	      ../db/mysql_util.cc \
-	      home_general.pb.cc \
-	      home_general.grpc.pb.cc \
-	      home_general_service.cc
+		main.cc \
+		../security/security.cc \
+		../db/mysql_util.cc \
+		home_general.pb.cc \
+		home_general.grpc.pb.cc \
+		home_general_service.cc
 
 CXX_OBJECTS = $(CXX_SOURCES:.cc=.o)
 
