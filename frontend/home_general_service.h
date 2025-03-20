@@ -6,6 +6,8 @@
 
 namespace grewal {
 
+std::string getSubdomain(const std::string& host);
+
 class HomeGeneralServiceImpl final : public HomeGeneral::Service {
 public:
     grpc::Status GetHomeGeneral(grpc::ServerContext* context,
