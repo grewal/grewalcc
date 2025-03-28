@@ -1,0 +1,10 @@
+# Node.js dependencies
+node_modules/
+
+# Other things to ignore (build output, logs, etc.)
+dist/
+grewal.log
+nohup.out
+*.o
+
+backups/
