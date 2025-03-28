@@ -1,0 +1,5 @@
+docker envoy
+sudo docker run -d --name envoy --network="host" -v /home/monty/src/gcc-gem-a/envoy.yaml:/etc/envoy/envoy.yaml envoyproxy/envoy:v1.33.1
+
+npx webpack
+(will build bundle.js into /dist) 
