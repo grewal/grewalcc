@@ -1,0 +1,14 @@
+{
+  "service": {
+    "name": "grewal-backend",
+    "port": 50051,
+    "address": "10.128.0.22",
+    "checks": [
+      {
+        "tcp": "10.128.0.22:50051",
+        "interval": "10s",
+        "timeout": "1s"
+      }
+    ]
+  }
+}
