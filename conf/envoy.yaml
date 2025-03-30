@@ -17,17 +17,13 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
           stat_prefix: ingress_http
-          # Enable gRPC-Web translation
           http_filters:
           - name: envoy.filters.http.grpc_web
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
-          # Enable CORS filter (adjust origins as needed)
           - name: envoy.filters.http.cors
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
-              # Add configuration here if needed, e.g., allow_origin_string_match
-          # Router filter must be last
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -35,62 +31,88 @@ static_resources:
             name: local_route
             virtual_hosts:
             - name: local_service
-              domains: ["*"] # Or specify your domain(s)
+              domains: ["*"]
               routes:
-              # Route all gRPC requests (or specific paths) to the backend cluster
               - match:
-                  prefix: "/" # Or match specific gRPC service/method: /grewal.HomeGeneral/
-                  grpc: {} # Match only gRPC requests
+                  prefix: "/"
+                  grpc: {}
                 route:
-                  cluster: service_grpc # Route to the backend cluster defined below
-                  timeout: 0s # Use 0s for streaming RPCs, or set a timeout
-                  # Add CORS policy if needed at the route level
-                  # cors:
-                  #   allow_origin_string_match:
-                  #     - safe_regex:
-                  #         google_re2: {}
-                  #         regex: ".*" # Adjust as needed
-                  #   allow_methods: GET, PUT, DELETE, POST, OPTIONS
-                  #   allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,custom-header-1,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout
-                  #   max_age: "1728000"
-                  #   expose_headers: custom-header-1,grpc-status,grpc-message
-              # Add other routes here if needed (e.g., for health checks)
+                  cluster: service_grpc # Route to the EDS-discovered backend cluster
+                  timeout: 0s
 
   clusters:
-  # Define the cluster that points to the backend gRPC service
-  - name: service_grpc
+  # --- NEW CLUSTER DEFINITION FOR CONSUL'S xDS SERVER ---
+  # This cluster tells Envoy how to reach the Consul agent's gRPC port (8502)
+  # running on the HOST machine.
+  - name: consul_cluster # Name for the cluster pointing to Consul
     connect_timeout: 1s
-    # --- CHANGE FOR STEP 13: Use Consul DNS ---
-    type: LOGICAL_DNS
-    # Optional: Force IPv4 resolution if needed
-    # dns_lookup_family: V4_ONLY
+    type: STRICT_DNS # Or STATIC if preferred and the IP is fixed
     lb_policy: ROUND_ROBIN
+    # Upstream protocol MUST be HTTP/2 for gRPC
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config:
+          http2_protocol_options: {}
     load_assignment:
-      cluster_name: service_grpc
+      cluster_name: consul_cluster
       endpoints:
       - lb_endpoints:
         - endpoint:
             address:
               socket_address:
-                # Target the Consul service DNS name
-                address: grewal-backend.service.consul
-                # Target the actual port the backend listens on
-                port_value: 50051
-    # --- END CHANGE FOR STEP 13 ---
-    # Specify that the upstream uses HTTP/2 (required for gRPC)
+                # Target the HOST's IP where Consul agent is running
+                # (Replace if your host IP differs, but 10.128.0.22 is from your JSON)
+                address: 10.128.0.22
+                # Target Consul's default gRPC xDS port
+                port_value: 8502
+  # --- END NEW CLUSTER DEFINITION FOR CONSUL ---
+
+  # --- MODIFIED CLUSTER DEFINITION FOR YOUR BACKEND SERVICE ---
+  - name: service_grpc # Your backend service cluster
+    connect_timeout: 1s
+    # --- CHANGE FOR STEP 16: Use EDS ---
+    type: EDS
+    lb_policy: ROUND_ROBIN # Load balancing policy for the discovered endpoints
+    # EDS configuration: Tell Envoy how to discover endpoints for this cluster
+    eds_cluster_config:
+      # Specify the name of the service AS REGISTERED IN CONSUL
+      service_name: grewal-backend
+      # Tell Envoy which cluster provides the EDS service (the consul_cluster defined above)
+      eds_config:
+        resource_api_version: V3 # Use V3 API
+        api_config_source:
+          api_type: GRPC
+          transport_api_version: V3
+          grpc_services:
+            - envoy_grpc:
+                # Point to the cluster name defined above for Consul
+                cluster_name: consul_cluster
+          # Set initial fetch timeout - increase if needed on slow networks/systems
+          set_node_on_first_message_only: true # Important for Consul compatibility
+
+    # --- REMOVED load_assignment section, EDS provides this ---
+    # --- END CHANGE FOR STEP 16 ---
+
+    # Specify that the upstream uses HTTP/2 (required for gRPC) - Still needed
     typed_extension_protocol_options:
       envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
         "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
         explicit_http_config:
           http2_protocol_options: {}
 
-# Optional: Configure tracing if needed
-# tracing:
-#   http:
-#     name: envoy.tracers.zipkin
-#     typed_config:
-#       "@type": type.googleapis.com/envoy.config.trace.v3.ZipkinConfig
-#       collector_cluster: zipkin
-#       collector_endpoint: "/api/v2/spans"
-#       shared_span_context: false
-#       collector_endpoint_version: HTTP_JSON
+    # Optional but Recommended: Add Envoy Active Health Checking (in addition to Consul's)
+    # health_checks:
+    # - timeout: 1s
+    #   interval: 10s
+    #   unhealthy_threshold: 2
+    #   healthy_threshold: 2
+    #   grpc_health_check:
+    #     service_name: '' # Standard gRPC health check service name
+    #   initial_jitter:
+    #     seconds: 1
+
+# Optional: Node identifier required for EDS/xDS
+node:
+ id: envoy-node-1 # Matches what was in your original JSON
+ cluster: grewalcc_proxy # Matches what was in your original JSON
