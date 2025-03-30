@@ -26,6 +26,10 @@ connect {
 
 bind_addr = "10.128.0.22"
 
+ports {
+  grpc = 8502
+}
+
 # client_addr
 # The address to which Consul will bind client interfaces, including the HTTP and DNS
 # servers. By default, this is "127.0.0.1", allowing only loopback connections. In
