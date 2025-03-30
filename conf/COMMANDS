@@ -1,0 +1,9 @@
+#DOCKER ENVOY
+sudo docker run -d --name envoy \
+  -p 8888:8888 \
+  -p 9901:9901 \
+  -v /home/monty/src/gcc-gem-a/conf/envoy.yaml:/etc/envoy/envoy.yaml \
+  envoyproxy/envoy:v1.33.1
+
+#CONSUL
+sudo consul agent -config-file=/etc/consul.d/consul.hcl -config-dir=/etc/consul.d/ -client=0.0.0.0 -ui -grpc-port=8502
