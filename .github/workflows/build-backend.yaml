@@ -1,14 +1,14 @@
 # .github/workflows/build-backend.yaml
-# Workflow definition for building the C++ backend binary 'grewal'
+# Workflow definition for building and testing the C++ backend binary 'grewal'
 
-name: Build C++ Backend # Workflow name displayed on GitHub Actions tab
+name: Build and Test C++ Backend # Updated workflow name slightly
 
 # Triggers the workflow on push events to any branch
 on: [push]
 
 jobs:
   build: # The job ID (internal identifier)
-    name: Build grewal binary # Job name displayed in GitHub Actions UI for this job
+    name: Build and Test grewal binary # Updated job name slightly
     runs-on: ubuntu-latest # Specifies the type of virtual machine to run the job on (GitHub-hosted Ubuntu)
 
     steps: # A sequence of tasks that make up the job
@@ -17,7 +17,7 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4 # Uses the official GitHub Action for checking out code (version 4)
 
-      # Step 2: Install minimum build dependencies for the 'grewal' C++ binary
+      # Step 2: Install minimum build dependencies for the 'grewal' C++ binary and tests
       # Installs necessary packages on the Ubuntu runner using apt-get.
       # --no-install-recommends keeps the installation leaner.
       - name: Install Dependencies
@@ -34,8 +34,8 @@ jobs:
             libre2-dev \
             libctemplate-dev \
             libgflags-dev \
-            libgtest-dev # Added gflags and gtest dev packages
-          # NOTE: If the build step fails later due to missing headers/libraries,
+            libgtest-dev # gtest is needed for 'make test'
+          # NOTE: If the build or test step fails later due to missing headers/libraries,
           # add the required -dev packages here.
 
       # Step 3: Build the backend executable using make
@@ -46,8 +46,16 @@ jobs:
         # The '-C frontend' changes directory to 'frontend' before running make.
         # Adjust 'frontend' if your Makefile/source code is elsewhere.
 
-      # Step 4 (Optional but recommended): Verify build output
-      # Lists the details of the expected output file to confirm it was created.
+      # Step 4: Run tests using make
+      # Assumes 'make test' target exists in 'frontend/Makefile', builds the test executable,
+      # and runs it. If tests fail, this step will fail the workflow.
+      - name: Run Tests
+        run: make -C frontend test
+        # Adjust 'frontend' if your Makefile/tests are elsewhere.
+
+      # Step 5 (was Step 4): Verify main build output
+      # Lists the details of the expected main output file.
+      # Less critical if tests pass, but confirms main binary is still produced.
       - name: List build output
         run: ls -l frontend/grewal
         # Adjust 'frontend/grewal' if the output binary has a different name or location.
