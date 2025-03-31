@@ -1,0 +1,51 @@
+# .github/workflows/build-backend.yaml
+# Workflow definition for building the C++ backend binary 'grewal'
+
+name: Build C++ Backend # Workflow name displayed on GitHub Actions tab
+
+# Triggers the workflow on push events to any branch
+on: [push]
+
+jobs:
+  build: # The job ID (internal identifier)
+    name: Build grewal binary # Job name displayed in GitHub Actions UI for this job
+    runs-on: ubuntu-latest # Specifies the type of virtual machine to run the job on (GitHub-hosted Ubuntu)
+
+    steps: # A sequence of tasks that make up the job
+      # Step 1: Check out repository code
+      # This action checks out your repository onto the runner, allowing the workflow to access your code.
+      - name: Check out code
+        uses: actions/checkout@v4 # Uses the official GitHub Action for checking out code (version 4)
+
+      # Step 2: Install minimum build dependencies for the 'grewal' C++ binary
+      # Installs necessary packages on the Ubuntu runner using apt-get.
+      # --no-install-recommends keeps the installation leaner.
+      - name: Install Dependencies
+        run: | # Executes shell commands
+          sudo apt-get update # Update package lists
+          sudo apt-get install -y --no-install-recommends \
+            make \
+            g++ \
+            libprotobuf-dev \
+            protobuf-compiler \
+            libgrpc++-dev \
+            libgrpc-dev \
+            libabsl-dev \
+            libre2-dev \
+            libctemplate-dev
+          # NOTE: If the build step fails later due to missing headers/libraries,
+          # add the required -dev packages here.
+
+      # Step 3: Build the backend executable using make
+      # Assumes 'Makefile' exists in the 'frontend' directory relative to the repo root
+      # and running 'make' there produces the 'grewal' binary.
+      - name: Build Backend
+        run: make -C frontend
+        # The '-C frontend' changes directory to 'frontend' before running make.
+        # Adjust 'frontend' if your Makefile/source code is elsewhere.
+
+      # Step 4 (Optional but recommended): Verify build output
+      # Lists the details of the expected output file to confirm it was created.
+      - name: List build output
+        run: ls -l frontend/grewal
+        # Adjust 'frontend/grewal' if the output binary has a different name or location.
