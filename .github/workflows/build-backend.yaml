@@ -1,61 +1,79 @@
-# .github/workflows/build-backend.yaml
-# Workflow definition for building and testing the C++ backend binary 'grewal'
+name: Build, Test, and Deploy C++ Backend
 
-name: Build and Test C++ Backend # Updated workflow name slightly
-
-# Triggers the workflow on push events to any branch
-on: [push]
+# Trigger this workflow on pushes to ANY branch
+on:
+  push:
 
 jobs:
-  build: # The job ID (internal identifier)
-    name: Build and Test grewal binary # Updated job name slightly
-    runs-on: ubuntu-latest # Specifies the type of virtual machine to run the job on (GitHub-hosted Ubuntu)
+  # --- JOB 1: Build and Test (Runs on ALL pushes) ---
+  build:
+    name: Build and Test grewal binary
+    runs-on: ubuntu-latest # Use a standard GitHub-hosted runner
+    steps:
+      # 1. Get the code from the repository
+      - name: Check out repository code
+        uses: actions/checkout@v4
 
-    steps: # A sequence of tasks that make up the job
-      # Step 1: Check out repository code
-      # This action checks out your repository onto the runner, allowing the workflow to access your code.
-      - name: Check out code
-        uses: actions/checkout@v4 # Uses the official GitHub Action for checking out code (version 4)
-
-      # Step 2: Install minimum build dependencies for the 'grewal' C++ binary and tests
-      # Installs necessary packages on the Ubuntu runner using apt-get.
-      # --no-install-recommends keeps the installation leaner.
+      # 2. Install all needed build/test tools and libraries
       - name: Install Dependencies
-        run: | # Executes shell commands
-          sudo apt-get update # Update package lists
-          sudo apt-get install -y --no-install-recommends \
-            make \
-            g++ \
-            libprotobuf-dev \
-            protobuf-compiler \
-            libgrpc++-dev \
-            libgrpc-dev \
-            libabsl-dev \
-            libre2-dev \
-            libctemplate-dev \
-            libgflags-dev \
-            libgtest-dev # gtest is needed for 'make test'
-          # NOTE: If the build or test step fails later due to missing headers/libraries,
-          # add the required -dev packages here.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends make g++ libprotobuf-dev protobuf-compiler libgrpc++-dev libgrpc-dev libabsl-dev libre2-dev libctemplate-dev libgflags-dev libgtest-dev
 
-      # Step 3: Build the backend executable using make
-      # Assumes 'Makefile' exists in the 'frontend' directory relative to the repo root
-      # and running 'make' there produces the 'grewal' binary.
+      # 3. Compile the C++ backend code
       - name: Build Backend
         run: make -C frontend
-        # The '-C frontend' changes directory to 'frontend' before running make.
-        # Adjust 'frontend' if your Makefile/source code is elsewhere.
 
-      # Step 4: Run tests using make
-      # Assumes 'make test' target exists in 'frontend/Makefile', builds the test executable,
-      # and runs it. If tests fail, this step will fail the workflow.
+      # 4. Run the C++ tests
       - name: Run Tests
         run: make -C frontend test
-        # Adjust 'frontend' if your Makefile/tests are elsewhere.
 
-      # Step 5 (was Step 4): Verify main build output
-      # Lists the details of the expected main output file.
-      # Less critical if tests pass, but confirms main binary is still produced.
+      # 5. (Optional) Verify the binary exists
       - name: List build output
         run: ls -l frontend/grewal
-        # Adjust 'frontend/grewal' if the output binary has a different name or location.
+
+      # 6. Upload the compiled binary (Needed for deploy job IF it runs)
+      - name: Upload grewal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grewal-binary
+          path: frontend/grewal
+
+  # --- JOB 2: Deploy to VM (Runs ONLY on 'master' pushes AFTER 'build' succeeds) ---
+  deploy:
+    name: Deploy grewal binary to VM
+    needs: build # Depends on the 'build' job finishing successfully
+    runs-on: ubuntu-latest
+
+    # ***** THIS IS THE KEY CHANGE *****
+    # Only run this 'deploy' job if the push was to the 'master' branch
+    if: github.ref == 'refs/heads/master'
+
+    steps:
+      # 1. Download the binary artifact from the 'build' job
+      - name: Download grewal artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: grewal-binary
+
+      # 2. Make the downloaded binary executable
+      - name: Set execute permissions on binary
+        run: chmod +x ./grewal
+
+      # 3. Connect to the VM via SSH and run deployment commands
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "./grewal"
+          target: "/home/monty/"
+          script: |
+            echo "Connection established to ${{ secrets.SSH_HOST }} as ${{ secrets.SSH_USER }}"
+            echo "Deploying grewal binary (triggered from master branch)..."
+            # IMPORTANT: These 'sudo' commands require passwordless sudo setup on the VM (Next Step!)
+            sudo cp /home/monty/grewal /usr/local/bin/grewal
+            echo "Restarting grewal systemd service..."
+            sudo systemctl restart grewal.service
+            # Optional: Clean up the copied binary
+            # rm /home/monty/grewal
+            echo "Deployment to VM completed successfully!"
