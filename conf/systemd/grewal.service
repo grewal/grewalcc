@@ -1,0 +1,23 @@
+[Unit]
+Description=Grewal Backend gRPC Service
+After=network.target # Ensure network is up before starting
+
+[Service]
+# Run as 'monty' user
+User=monty
+Group=monty
+
+# Command to start the service
+ExecStart=/usr/local/bin/grewal
+
+# Restart behaviour
+Restart=on-failure
+RestartSec=5s
+
+# Log to systemd journal
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target 
+# Start on boot in normal multi-user mode
