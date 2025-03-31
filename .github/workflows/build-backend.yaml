@@ -32,7 +32,9 @@ jobs:
             libgrpc-dev \
             libabsl-dev \
             libre2-dev \
-            libctemplate-dev
+            libctemplate-dev \
+            libgflags-dev \
+            libgtest-dev # Added gflags and gtest dev packages
           # NOTE: If the build step fails later due to missing headers/libraries,
           # add the required -dev packages here.
 
