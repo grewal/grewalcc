@@ -19,10 +19,11 @@ jobs:
       - name: Install Base Dependencies
         run: |
           sudo apt-get update
+          # Ensure every line except the last one in the install list ends with \
           sudo apt-get install -y --no-install-recommends \
             build-essential \
             pkg-config \
-            cmake \ # Needed to build c-ares
+            cmake \
             libgrpc++-dev \
             libprotobuf-dev \
             protobuf-compiler \
@@ -37,39 +38,27 @@ jobs:
             liblzma-dev \
             libunwind-dev \
             libgtest-dev
-            # We no longer rely on the system libc-ares-dev for the static lib
+          # Comments should be outside or properly handled if inside multiline commands
 
-      # <<< --- Build c-ares Statically --- >>>
       - name: Build c-ares from source
         run: |
-          # Define an installation prefix within the workspace
           export CARES_INSTALL_PREFIX="$GITHUB_WORKSPACE/cares_install"
           mkdir -p "$CARES_INSTALL_PREFIX"
           echo "Installing c-ares to $CARES_INSTALL_PREFIX"
-
-          # Clone c-ares source code (using a known stable tag is often safer)
           git clone --depth 1 --branch cares-1_32_3 https://github.com/c-ares/c-ares.git cares_src
           cd cares_src
-
-          # Configure using CMake - Enable static lib, disable shared, install to prefix
           cmake . \
             -DCMAKE_INSTALL_PREFIX="$CARES_INSTALL_PREFIX" \
             -DCARES_STATIC=ON \
             -DCARES_SHARED=OFF
-
-          # Build and install
-          make -j$(nproc) # Use multiple cores for faster build
+          make -j$(nproc)
           make install
-
-          # Verify installation
           echo "--- Checking installed c-ares files ---"
           find "$CARES_INSTALL_PREFIX" -name "libcares.a"
           find "$CARES_INSTALL_PREFIX" -name "c-ares.pc"
-          cd .. # Go back to workspace root
+          cd ..
 
-      # <<< --- Build Backend Using Custom c-ares --- >>>
       - name: Build Backend Binary
-        # Set PKG_CONFIG_PATH so make's pkg-config calls find our custom c-ares.pc
         env:
           PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
         run: |
@@ -81,10 +70,9 @@ jobs:
           make -C frontend V=1
 
       - name: Run Tests
-        # Tests might also need the custom c-ares library path if they link separately
         env:
           PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
-          LD_LIBRARY_PATH: ${{ github.workspace }}/cares_install/lib # May be needed if tests link dynamically internally
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cares_install/lib
         run: |
           echo "--- Running tests with PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
           make -C frontend test
