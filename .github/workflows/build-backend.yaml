@@ -1,107 +1,113 @@
+# .github/workflows/build-backend.yaml
 name: Build, Test, and Deploy C++ Backend
 
-# Trigger this workflow on pushes to ANY branch
 on:
   push:
+    branches: [ "master" ] # Trigger on push to master branch
+  pull_request:
+    branches: [ "master" ] # Optional: Trigger on pull requests targeting master
 
 jobs:
-  # --- JOB 1: Build and Test (Runs on ALL pushes) ---
   build:
     name: Build and Test grewal binary
     runs-on: ubuntu-latest # Use a standard GitHub-hosted runner
+
     steps:
-      # 1. Get the code from the repository
-      - name: Check out repository code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Install all needed build/test tools and libraries
-      #    UPDATED LIST for static linking requirements (comments removed)
-      - name: Install Dependencies # <<< CHECKPOINT 1
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            make \
-            gcc \
-            g++ \
+            build-essential \
             pkg-config \
-            libgrpc-dev \
+            libgrpc++-dev \
             libprotobuf-dev \
+            protobuf-compiler \
             protobuf-compiler-grpc \
             libre2-dev \
             libgflags-dev \
-            libgoogle-glog-dev \
             libctemplate-dev \
+            libgoogle-glog-dev \
+            libabsl-dev \
             libssl-dev \
             zlib1g-dev \
-            libabsl-dev \
-            libgtest-dev # <<< Ensure all these packages exist on ubuntu-latest and provide static libs (.a)
+            liblzma-dev \
+            libunwind-dev \
+            libgtest-dev
 
-      # 3. Compile the C++ backend code using static linking Makefile
-      - name: Build Backend # <<< CHECKPOINT 2
-        # Assumes your Makefile is in 'frontend/' and correctly configured for static linking
+      - name: Build Backend Binary
+        # Assumes Makefile is in the 'frontend' directory
+        # No PKG_CONFIG_PATH needed if packages install .pc files to standard locations
         run: make -C frontend
 
-      # 4. Run the C++ tests
-      - name: Run Tests # <<< CHECKPOINT 3
-        # Assumes your 'test' target works with static linking setup
+      - name: Run Tests
+        # Assumes 'test' target exists in frontend/Makefile and links/runs correctly
         run: make -C frontend test
 
-      # 5. Verify the binary exists and check its linkage
-      - name: List build output and check linkage # <<< CHECKPOINT 4
+      - name: Check Binary Linkage and Size
+        # Verify static linking (should show minimal dynamic libs like libc, libm, ld-linux)
         run: |
+          echo "--- Checking grewal binary ---"
           ls -lh frontend/grewal
-          echo "--- Running ldd on the built binary (in CI) ---"
-          ldd frontend/grewal || true # <<< Critical check for successful static linking
+          ldd frontend/grewal
 
-      # 6. Upload the compiled (hopefully static) binary so the 'deploy' job can use it
-      - name: Upload grewal artifact # <<< CHECKPOINT 5
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: grewal-binary
-          path: frontend/grewal # Path must be correct
+          name: grewal-binary # Name of the artifact
+          path: frontend/grewal # Path to the file to upload
 
-  # --- JOB 2: Deploy to VM (Runs ONLY on 'master' pushes AFTER 'build' succeeds) ---
   deploy:
     name: Deploy grewal binary to VM
-    needs: build
+    needs: build # Run only after the 'build' job succeeds
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master'
+    # Run only on pushes to the master branch, not on pull requests
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
     steps:
-      # 1. Download the binary artifact from the 'build' job
-      - name: Download grewal artifact # <<< CHECKPOINT 6
+      - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: grewal-binary # Must match upload name
+          name: grewal-binary # Must match the upload name
+          # Optional: specify download path, defaults to current dir
+          # path: .
 
-      # 2. Make the downloaded binary executable (on the runner)
-      - name: Set execute permissions on binary
-        run: chmod +x ./grewal
+      - name: Set Execute Permissions
+        run: chmod +x grewal
 
-      # 3. Copy the binary file to the target VM using SCP
-      - name: Copy binary to VM via SCP # <<< CHECKPOINT 7
-        uses: appleboy/scp-action@master
+      - name: Set up SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          source: "./grewal"
-          target: "/home/monty/" # Destination dir exists and user has write perm
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} # Secret containing the private SSH key
 
-      # 4. Execute commands on the target VM using SSH
-      - name: Execute deployment commands on VM via SSH # <<< CHECKPOINT 8
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            # These commands run ON your VM (gcc-gem-a)
-            echo "Connection established to ${{ secrets.SSH_HOST }} as ${{ secrets.SSH_USER }}"
-            echo "Executing deployment script..."
-            ls -l /home/monty/grewal
-            sudo systemctl stop grewal.service # Assumes passwordless sudo for this user/command
-            sudo cp /home/monty/grewal /usr/local/bin/grewal # Assumes passwordless sudo for this user/command AND target dir exists
-            sudo systemctl start grewal.service # Assumes passwordless sudo for this user/command
-            rm /home/monty/grewal # Assumes user has permission to remove the file
-            echo "Deployment script on VM completed."
+      - name: Add Known Hosts
+        # Necessary to avoid interactive prompt for host verification
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Copy binary to VM
+        run: >
+          scp -o StrictHostKeyChecking=no \
+          grewal \
+          ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/grewal_new_deploy
+
+      - name: Execute deployment script on VM
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
+            echo "Stopping grewal service..."
+            sudo /usr/bin/systemctl stop grewal.service
+            echo "Copying new binary..."
+            sudo /usr/bin/cp /home/${{ secrets.DEPLOY_USER }}/grewal_new_deploy /usr/local/bin/grewal
+            echo "Setting permissions on new binary..."
+            sudo chmod +x /usr/local/bin/grewal
+            echo "Starting grewal service..."
+            sudo /usr/bin/systemctl start grewal.service
+            echo "Removing temporary file..."
+            rm /home/${{ secrets.DEPLOY_USER }}/grewal_new_deploy
+            echo "Checking service status..."
+            sudo /usr/bin/systemctl status grewal.service --no-pager || true # Allow non-zero exit if status fails immediately
+          EOF
