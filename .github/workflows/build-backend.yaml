@@ -77,11 +77,13 @@ jobs:
           echo "--- Specifically checking for libcares.a ---"
           find "$CARES_INSTALL_PREFIX" -name "libcares.a"
           echo "--- Specifically checking for c-ares.pc ---"
-          find "$CARES_INSTALL_PREFIX" -name "c-ares.pc"
+          find "$CARES_INSTALL_PREFIX" -name "c-ares.pc" || echo "c-ares.pc not found by find" # Modified slightly for clarity
+          echo "--- Specifically checking for libcares.pc ---" # Added check for the actual file
+          find "$CARES_INSTALL_PREFIX" -name "libcares.pc"
           echo "--- Listing contents of expected pkgconfig dir ---"
           ls -l "$CARES_INSTALL_PREFIX/lib/pkgconfig/" || echo "pkgconfig directory not found or empty"
-          echo "--- Trying to cat c-ares.pc (if it exists) ---"
-          cat "$CARES_INSTALL_PREFIX/lib/pkgconfig/c-ares.pc" || echo "c-ares.pc not found"
+          echo "--- Trying to cat libcares.pc (if it exists) ---" # Changed to cat the correct file
+          cat "$CARES_INSTALL_PREFIX/lib/pkgconfig/libcares.pc" || echo "libcares.pc not found"
           # --- ADDED DIAGNOSTICS END ---
 
           # Go back to the parent directory before the next step
@@ -93,10 +95,12 @@ jobs:
           PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
         run: |
           echo "--- Using PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
-          # Verify c-ares is found via pkg-config now
-          pkg-config --exists --print-errors c-ares || (echo "ERROR: Still cannot find c-ares via pkg-config" && exit 1)
-          echo "--- c-ares static libs via pkg-config: ---"
-          pkg-config --static --libs c-ares
+          # Verify c-ares (now libcares) is found via pkg-config now
+          # **** CHANGED c-ares to libcares ****
+          pkg-config --exists --print-errors libcares || (echo "ERROR: Still cannot find libcares via pkg-config" && exit 1)
+          echo "--- c-ares (now libcares) static libs via pkg-config: ---"
+           # **** CHANGED c-ares to libcares ****
+          pkg-config --static --libs libcares
           echo "--- Proceeding with make (verbose) ---"
           # Use V=1 for verbose make output to see the exact commands
           make -C frontend V=1
