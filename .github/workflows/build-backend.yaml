@@ -44,11 +44,14 @@ jobs:
           mkdir -p "$CARES_INSTALL_PREFIX"
           echo "Installing c-ares to $CARES_INSTALL_PREFIX"
           # --- MODIFIED SECTION START ---
-          # Clone the repository shallowly (default branch)
-          echo "Cloning c-ares repository..."
-          git clone --depth 1 https://github.com/c-ares/c-ares.git cares_src
+          # Clone the repository shallowly, without tags initially
+          echo "Cloning c-ares repository (shallow, no tags)..."
+          git clone --depth 1 --no-tags https://github.com/c-ares/c-ares.git cares_src
           cd cares_src
-          # Explicitly checkout the desired tag
+          # Explicitly fetch the specific tag we need (and its history)
+          echo "Fetching tag cares-1_32_3..."
+          git fetch --depth 1 origin refs/tags/cares-1_32_3:refs/tags/cares-1_32_3
+          # Checkout the fetched tag
           echo "Checking out tag cares-1_32_3..."
           git checkout cares-1_32_3
           # --- MODIFIED SECTION END ---
@@ -69,21 +72,27 @@ jobs:
 
       - name: Build Backend Binary
         env:
+          # Point pkg-config to the custom c-ares install location
           PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
         run: |
           echo "--- Using PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
+          # Verify c-ares is found via pkg-config now
           pkg-config --exists --print-errors c-ares || (echo "ERROR: Still cannot find c-ares via pkg-config" && exit 1)
           echo "--- c-ares static libs via pkg-config: ---"
           pkg-config --static --libs c-ares
           echo "--- Proceeding with make (verbose) ---"
+          # Use V=1 for verbose make output to see the exact commands
           make -C frontend V=1
 
       - name: Run Tests
         env:
+          # Pass the PKG_CONFIG_PATH to the test execution as well, in case tests link separately
           PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
+          # LD_LIBRARY_PATH might not be strictly needed for static test binary, but include defensively
           LD_LIBRARY_PATH: ${{ github.workspace }}/cares_install/lib
         run: |
           echo "--- Running tests with PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
+          # Assuming 'make test' correctly builds/runs tests
           make -C frontend test
 
       - name: Check Binary Linkage and Size
@@ -91,9 +100,11 @@ jobs:
           echo "--- Checking grewal binary ---"
           if [ -f frontend/grewal ]; then
             ls -lh frontend/grewal
+            # ldd should show 'not a dynamic executable' or minimal dependencies for static build
             ldd frontend/grewal
           else
             echo "grewal binary not found (build likely failed)"
+            # Fail the step explicitly if binary is missing after make
             exit 1
           fi
 
@@ -102,12 +113,15 @@ jobs:
         with:
           name: grewal-binary
           path: frontend/grewal
+          # Warn instead of error if the file isn't found (e.g., build failed)
+          # The 'deploy' job's 'needs: build' handles the actual failure check
           if-no-files-found: warn
 
   deploy:
     name: Deploy grewal binary to VM
-    needs: build
+    needs: build # Ensures this only runs if 'build' job succeeds
     runs-on: ubuntu-latest
+    # Condition: Only run on push to master branch, not PRs
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
 
     steps:
@@ -115,6 +129,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: grewal-binary
+          # Optional: Add fail-if-no-artifact: true if you want explicit failure here
+          # However, the 'needs: build' should implicitly handle this
 
       - name: Set Execute Permissions
         run: chmod +x grewal
@@ -150,5 +166,6 @@ jobs:
             echo "Removing temporary file..."
             rm /home/${{ secrets.DEPLOY_USER }}/grewal_new_deploy
             echo "Checking service status..."
+            # Use '|| true' to prevent the script failing if status returns non-zero (e.g., service failed immediately)
             sudo /usr/bin/systemctl status grewal.service --no-pager || true
           EOF
