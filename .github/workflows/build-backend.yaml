@@ -20,60 +20,82 @@ jobs:
 
       # 3. Compile the C++ backend code
       - name: Build Backend
+        # Assumes your Makefile is in 'frontend/' and output is 'frontend/grewal'
         run: make -C frontend
 
       # 4. Run the C++ tests
       - name: Run Tests
+        # Assumes your 'test' target is in the 'frontend/' Makefile
         run: make -C frontend test
 
       # 5. (Optional) Verify the binary exists
       - name: List build output
         run: ls -l frontend/grewal
 
-      # 6. Upload the compiled binary (Needed for deploy job IF it runs)
+      # 6. Upload the compiled binary so the 'deploy' job can use it
       - name: Upload grewal artifact
         uses: actions/upload-artifact@v4
         with:
-          name: grewal-binary
-          path: frontend/grewal
+          name: grewal-binary # This name must match the download step in the 'deploy' job
+          path: frontend/grewal # Path to the built binary relative to the repo root
 
   # --- JOB 2: Deploy to VM (Runs ONLY on 'master' pushes AFTER 'build' succeeds) ---
   deploy:
     name: Deploy grewal binary to VM
     needs: build # Depends on the 'build' job finishing successfully
     runs-on: ubuntu-latest
-
-    # ***** THIS IS THE KEY CHANGE *****
-    # Only run this 'deploy' job if the push was to the 'master' branch
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' # Only run deploy job for master branch
 
     steps:
       # 1. Download the binary artifact from the 'build' job
       - name: Download grewal artifact
         uses: actions/download-artifact@v4
         with:
-          name: grewal-binary
+          name: grewal-binary # Must match the upload name
 
-      # 2. Make the downloaded binary executable
+      # 2. Make the downloaded binary executable (on the runner)
       - name: Set execute permissions on binary
         run: chmod +x ./grewal
 
-      # 3. Connect to the VM via SSH and run deployment commands
-      - name: Deploy to Server via SSH
-        uses: appleboy/ssh-action@master
+      # 3. Copy the binary file to the target VM using SCP
+      - name: Copy binary to VM via SCP
+        uses: appleboy/scp-action@master # Use dedicated SCP action
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "./grewal"
-          target: "/home/monty/"
+          port: 22 # Standard SSH port
+          source: "./grewal" # The executable file in the runner's workspace
+          target: "/home/monty/" # The destination directory on the VM
+
+      # 4. Execute commands on the target VM using SSH
+      - name: Execute deployment commands on VM via SSH
+        uses: appleboy/ssh-action@master # Use SSH action (no source/target here)
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # These commands run ON the VM (gcc-gem-a)
             echo "Connection established to ${{ secrets.SSH_HOST }} as ${{ secrets.SSH_USER }}"
-            echo "Deploying grewal binary (triggered from master branch)..."
-            # IMPORTANT: These 'sudo' commands require passwordless sudo setup on the VM (Next Step!)
+            echo "Executing deployment script..."
+
+            # Verify the file arrived (optional debug)
+            echo "Listing files in /home/monty/..."
+            ls -l /home/monty/grewal
+
+            # Copy the binary from temporary location to final destination using sudo
+            echo "Copying binary to /usr/local/bin/..."
+            # IMPORTANT: This command requires passwordless sudo setup!
             sudo cp /home/monty/grewal /usr/local/bin/grewal
+
+            # Restart the service using sudo
             echo "Restarting grewal systemd service..."
+            # IMPORTANT: This command requires passwordless sudo setup!
             sudo systemctl restart grewal.service
-            # Optional: Clean up the copied binary
-            # rm /home/monty/grewal
-            echo "Deployment to VM completed successfully!"
+
+            # Clean up the temporarily copied file
+            echo "Cleaning up temporary file /home/monty/grewal..."
+            rm /home/monty/grewal
+
+            echo "Deployment script on VM completed successfully!" # This line might be reached even if sudo fails
