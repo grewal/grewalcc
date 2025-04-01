@@ -41,9 +41,11 @@ PKG_CFG_STATIC_LIBS = \
 
 STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(PKG_CFG_STATIC_LIBS))
 
+# Added -L/usr/lib/x86_64-linux-gnu to help linker find standard libraries like c-ares
 LDFLAGS = \
     -no-pie \
     -static-libstdc++ \
+    -L/usr/lib/x86_64-linux-gnu \
     -Wl,-Bstatic \
     $(STATIC_PKG_LDFLAGS) \
     -lunwind \

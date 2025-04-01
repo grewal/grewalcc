@@ -1,113 +1,117 @@
-# .github/workflows/build-backend.yaml
-name: Build, Test, and Deploy C++ Backend
+# Author: Yadwinder Grewal
+# Copyright: 2025 Grewal, Inc.
 
-on:
-  push:
-    branches: [ "master" ] # Trigger on push to master branch
-  pull_request:
-    branches: [ "master" ] # Optional: Trigger on pull requests targeting master
+BINARY_NAME = grewal
 
-jobs:
-  build:
-    name: Build and Test grewal binary
-    runs-on: ubuntu-latest # Use a standard GitHub-hosted runner
+CXX = g++
+CXXFLAGS = -Wall -Wextra -g -std=c++17
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+PKG_CFG_INCLUDE_LIBS = \
+    grpc++ \
+    grpc \
+    protobuf \
+    re2 \
+    gflags \
+    libctemplate_nothreads \
+    libglog \
+    absl_base \
+    absl_flags \
+    absl_strings \
+    openssl \
+    liblzma
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            libgrpc++-dev \
-            libprotobuf-dev \
-            protobuf-compiler \
-            protobuf-compiler-grpc \
-            libre2-dev \
-            libgflags-dev \
-            libctemplate-dev \
-            libgoogle-glog-dev \
-            libabsl-dev \
-            libssl-dev \
-            zlib1g-dev \
-            liblzma-dev \
-            libunwind-dev \
-            libgtest-dev
+INCLUDE_DIRS := $(shell pkg-config --cflags-only-I $(PKG_CFG_INCLUDE_LIBS)) \
+    .
+INCLUDE_PATH = $(patsubst %,-I%,$(INCLUDE_DIRS))
 
-      - name: Build Backend Binary
-        # Assumes Makefile is in the 'frontend' directory
-        # No PKG_CONFIG_PATH needed if packages install .pc files to standard locations
-        run: make -C frontend
+PKG_CFG_STATIC_LIBS = \
+    grpc++ \
+    grpc \
+    protobuf \
+    re2 \
+    gflags \
+    libctemplate_nothreads \
+    libglog \
+    absl_base \
+    absl_flags \
+    absl_strings \
+    openssl \
+    zlib \
+    liblzma
 
-      - name: Run Tests
-        # Assumes 'test' target exists in frontend/Makefile and links/runs correctly
-        run: make -C frontend test
+STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(PKG_CFG_STATIC_LIBS))
 
-      - name: Check Binary Linkage and Size
-        # Verify static linking (should show minimal dynamic libs like libc, libm, ld-linux)
-        run: |
-          echo "--- Checking grewal binary ---"
-          ls -lh frontend/grewal
-          ldd frontend/grewal
+# Added -L/usr/lib/x86_64-linux-gnu to help linker find standard libraries like c-ares
+LDFLAGS = \
+    -no-pie \
+    -static-libstdc++ \
+    -L/usr/lib/x86_64-linux-gnu \
+    -Wl,-Bstatic \
+    $(STATIC_PKG_LDFLAGS) \
+    -lunwind \
+    -Wl,-Bdynamic \
+    -lpthread \
+    -ldl
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: grewal-binary # Name of the artifact
-          path: frontend/grewal # Path to the file to upload
+CXX_SOURCES = \
+    main.cc \
+    ../security/security.cc \
+    ../db/mysql_util.cc \
+    home_general.pb.cc \
+    home_general.grpc.pb.cc \
+    home_general_service.cc
 
-  deploy:
-    name: Deploy grewal binary to VM
-    needs: build # Run only after the 'build' job succeeds
-    runs-on: ubuntu-latest
-    # Run only on pushes to the master branch, not on pull requests
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+CXX_OBJECTS = $(CXX_SOURCES:.cc=.o)
+OBJECTS = $(CXX_OBJECTS)
 
-    steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: grewal-binary # Must match the upload name
-          # Optional: specify download path, defaults to current dir
-          # path: .
+TEST_BINARY = security_test
+TEST_SOURCES = ../security/security_test.cc
+TEST_DEPS_OBJECTS = ../security/security.o
+TEST_MAIN_OBJECT = $(TEST_SOURCES:.cc=.o)
 
-      - name: Set Execute Permissions
-        run: chmod +x grewal
+GTEST_STATIC_LIBS = gtest_main gtest
+TEST_STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(GTEST_STATIC_LIBS))
 
-      - name: Set up SSH Agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} # Secret containing the private SSH key
+TEST_LDFLAGS = \
+    $(LDFLAGS) \
+    -Wl,-Bstatic \
+    $(TEST_STATIC_PKG_LDFLAGS) \
+    -Wl,-Bdynamic
 
-      - name: Add Known Hosts
-        # Necessary to avoid interactive prompt for host verification
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
+RM = rm -rf
 
-      - name: Copy binary to VM
-        run: >
-          scp -o StrictHostKeyChecking=no \
-          grewal \
-          ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/grewal_new_deploy
+.PHONY: all clean test install
 
-      - name: Execute deployment script on VM
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
-            echo "Stopping grewal service..."
-            sudo /usr/bin/systemctl stop grewal.service
-            echo "Copying new binary..."
-            sudo /usr/bin/cp /home/${{ secrets.DEPLOY_USER }}/grewal_new_deploy /usr/local/bin/grewal
-            echo "Setting permissions on new binary..."
-            sudo chmod +x /usr/local/bin/grewal
-            echo "Starting grewal service..."
-            sudo /usr/bin/systemctl start grewal.service
-            echo "Removing temporary file..."
-            rm /home/${{ secrets.DEPLOY_USER }}/grewal_new_deploy
-            echo "Checking service status..."
-            sudo /usr/bin/systemctl status grewal.service --no-pager || true # Allow non-zero exit if status fails immediately
-          EOF
+all: $(BINARY_NAME)
+
+$(BINARY_NAME): $(OBJECTS)
+	@echo "--- Linking main binary ($@) ---"
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+	@echo "--- Binary '$@' linked. Use 'ldd $@' to check dynamic dependencies ---"
+
+%.o: %.cc
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+
+../security/security.o: ../security/security.cc ../security/security.h
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+
+../db/mysql_util.o: ../db/mysql_util.cc
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+
+test: $(TEST_BINARY)
+	./$(TEST_BINARY)
+
+$(TEST_BINARY): $(TEST_MAIN_OBJECT) $(TEST_DEPS_OBJECTS)
+	@echo "--- Linking test binary ($@) ---"
+	$(CXX) $(CXXFLAGS) $^ $(TEST_LDFLAGS) -o $@
+	@echo "--- Binary '$@' linked. Use 'ldd $@' to check dynamic dependencies ---"
+
+$(TEST_MAIN_OBJECT): $(TEST_SOURCES) ../security/security.h
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
+
+clean:
+	$(RM) $(BINARY_NAME) $(OBJECTS) $(TEST_BINARY) $(TEST_MAIN_OBJECT) *.d
+
+install: $(BINARY_NAME)
+	@echo "Install target is for manual testing/setup only."
+	@echo "Production deployment uses CI/CD."
