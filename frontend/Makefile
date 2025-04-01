@@ -6,6 +6,7 @@ BINARY_NAME = grewal
 CXX = g++
 CXXFLAGS = -Wall -Wextra -g -std=c++17
 
+# List of packages needed for include paths (doesn't need c-ares usually)
 PKG_CFG_INCLUDE_LIBS = \
     grpc++ \
     grpc \
@@ -24,6 +25,7 @@ INCLUDE_DIRS := $(shell pkg-config --cflags-only-I $(PKG_CFG_INCLUDE_LIBS)) \
     .
 INCLUDE_PATH = $(patsubst %,-I%,$(INCLUDE_DIRS))
 
+# List of packages needed for static linking flags
 PKG_CFG_STATIC_LIBS = \
     grpc++ \
     grpc \
@@ -37,13 +39,18 @@ PKG_CFG_STATIC_LIBS = \
     absl_strings \
     openssl \
     zlib \
-    liblzma
+    liblzma \
+    libcares # <--- ADDED libcares HERE
 
+# Get static library flags from pkg-config for the listed packages
 STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(PKG_CFG_STATIC_LIBS))
 
-# Added -L/usr/lib/x86_64-linux-gnu to help linker find standard libraries like c-ares
+# Added -L/usr/lib/x86_64-linux-gnu to help linker find standard libraries
+# Added -lunwind explicitly as it might be needed by other static libs
+# Note: -static-libgcc and -static-libstdc++ ensure these are statically linked
 LDFLAGS = \
     -no-pie \
+    -static-libgcc \
     -static-libstdc++ \
     -L/usr/lib/x86_64-linux-gnu \
     -Wl,-Bstatic \
@@ -69,14 +76,22 @@ TEST_SOURCES = ../security/security_test.cc
 TEST_DEPS_OBJECTS = ../security/security.o
 TEST_MAIN_OBJECT = $(TEST_SOURCES:.cc=.o)
 
+# Define dependencies for tests (might need similar static libs)
 GTEST_STATIC_LIBS = gtest_main gtest
 TEST_STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(GTEST_STATIC_LIBS))
 
 TEST_LDFLAGS = \
-    $(LDFLAGS) \
+    -no-pie \
+    -static-libgcc \
+    -static-libstdc++ \
+    -L/usr/lib/x86_64-linux-gnu \
     -Wl,-Bstatic \
+    $(STATIC_PKG_LDFLAGS) \
     $(TEST_STATIC_PKG_LDFLAGS) \
-    -Wl,-Bdynamic
+    -lunwind \
+    -Wl,-Bdynamic \
+    -lpthread \
+    -ldl
 
 RM = rm -rf
 
@@ -95,7 +110,8 @@ $(BINARY_NAME): $(OBJECTS)
 ../security/security.o: ../security/security.cc ../security/security.h
 	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
-../db/mysql_util.o: ../db/mysql_util.cc
+../db/mysql_util.o: ../db/mysql_util.cc ../db/mysql_util.h
+# Ensure mysql_util.h exists or remove dependency if not needed
 	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
 test: $(TEST_BINARY)
@@ -115,3 +131,8 @@ clean:
 install: $(BINARY_NAME)
 	@echo "Install target is for manual testing/setup only."
 	@echo "Production deployment uses CI/CD."
+
+# Minor cleanup/consistency added:
+# - Added -static-libgcc to LDFLAGS and TEST_LDFLAGS for completeness.
+# - Added placeholder dependency for mysql_util.h (adjust if needed).
+# - Ensured TEST_LDFLAGS includes both main static libs and gtest static libs.
