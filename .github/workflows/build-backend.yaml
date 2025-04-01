@@ -15,12 +15,33 @@ jobs:
         uses: actions/checkout@v4
 
       # 2. Install all needed build/test tools and libraries
+      #    UPDATED LIST for static linking requirements
       - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends make g++ libprotobuf-dev protobuf-compiler libgrpc++-dev libgrpc-dev libabsl-dev libre2-dev libctemplate-dev libgflags-dev libgtest-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            make \
+            gcc \
+            g++ \
+            pkg-config \
+            # --- DEV packages needed for STATIC linking ---
+            libgrpc-dev \
+            libprotobuf-dev \
+            protobuf-compiler-grpc \
+            libre2-dev \
+            libgflags-dev \
+            libgoogle-glog-dev \
+            libctemplate-dev \
+            libssl-dev \
+            zlib1g-dev \
+            libabsl-dev \
+            # --- DEV packages needed for testing ---
+            libgtest-dev
 
-      # 3. Compile the C++ backend code
+      # 3. Compile the C++ backend code using static linking Makefile
       - name: Build Backend
         # Assumes your Makefile is in 'frontend/' and output is 'frontend/grewal'
+        # This Makefile should now perform static linking
         run: make -C frontend
 
       # 4. Run the C++ tests
@@ -28,11 +49,14 @@ jobs:
         # Assumes your 'test' target is in the 'frontend/' Makefile
         run: make -C frontend test
 
-      # 5. (Optional) Verify the binary exists
-      - name: List build output
-        run: ls -l frontend/grewal
+      # 5. Verify the binary exists and check its linkage
+      - name: List build output and check linkage
+        run: |
+          ls -lh frontend/grewal
+          echo "--- Running ldd on the built binary (in CI) ---"
+          ldd frontend/grewal || true # Check dynamic dependencies, ignore error if fully static
 
-      # 6. Upload the compiled binary so the 'deploy' job can use it
+      # 6. Upload the compiled (hopefully static) binary so the 'deploy' job can use it
       - name: Upload grewal artifact
         uses: actions/upload-artifact@v4
         with:
@@ -75,7 +99,6 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # This is the UPDATED script block
           script: |
             # These commands run ON your VM (gcc-gem-a)
             echo "Connection established to ${{ secrets.SSH_HOST }} as ${{ secrets.SSH_USER }}"
@@ -102,4 +125,4 @@ jobs:
             echo "Cleaning up temporary file /home/monty/grewal..."
             rm /home/monty/grewal
 
-            echo "Deployment script on VM completed." # Note: This indicates the script finished, not necessarily that all sudo commands succeeded.
+            echo "Deployment script on VM completed."
