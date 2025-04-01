@@ -8,3 +8,9 @@ nohup.out
 *.o
 
 backups/
+
+# Ignore generated Protobuf/gRPC files
+*.pb.h
+*.pb.cc
+*.grpc.pb.h
+*.grpc.pb.cc
