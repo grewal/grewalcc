@@ -39,120 +39,99 @@ jobs:
             libgtest-dev \
             wget # Ensure wget is installed
 
-      # STEP 1: Build c-ares and add DETAILED verification
-      - name: Build c-ares from source with Verification
+      - name: Build c-ares from source
         run: |
-          export CARES_VERSION="1.34.4" # Or use the version you intend
+          # Use the correct version identified (1.34.4)
+          export CARES_VERSION="1.34.4"
           export CARES_INSTALL_PREFIX="$GITHUB_WORKSPACE/cares_install"
           mkdir -p "$CARES_INSTALL_PREFIX"
           echo "Installing c-ares version ${CARES_VERSION} to $CARES_INSTALL_PREFIX"
 
+          # --- USE WGET/TAR WITH CORRECT VERSION AND URL ---
           echo "Downloading c-ares source tarball (v${CARES_VERSION})..."
+          # Use the specific releases download URL
           wget -q -O "c-ares-${CARES_VERSION}.tar.gz" "https://github.com/c-ares/c-ares/releases/download/v${CARES_VERSION}/c-ares-${CARES_VERSION}.tar.gz"
+          # Check if download was successful
           if [ ! -f "c-ares-${CARES_VERSION}.tar.gz" ]; then
              echo "ERROR: Failed to download c-ares tarball!"
              exit 1
           fi
 
           echo "Extracting c-ares source..."
+          # Extract to a specific directory, stripping the top-level component
           mkdir cares_src
           tar xzf "c-ares-${CARES_VERSION}.tar.gz" -C cares_src --strip-components=1
           cd cares_src
+          # --- END WGET/TAR SECTION ---
 
           echo "Configuring c-ares with CMake..."
-          # Ensure the CMake build produces libcares.pc
+          # CMake command remains the same
           cmake . \
             -DCMAKE_INSTALL_PREFIX="$CARES_INSTALL_PREFIX" \
             -DCARES_STATIC=ON \
-            -DCARES_SHARED=OFF \
-            -DPC_FILENAME=libcares # Explicitly request libcares.pc if possible, though default might be this already
+            -DCARES_SHARED=OFF
           echo "Building c-ares..."
           make -j$(nproc)
           echo "Installing c-ares..."
-          make install # This installs files into $CARES_INSTALL_PREFIX
-
-          # --- Verification ---
+          make install
           echo "--- Checking installed c-ares files ---"
-          echo "Searching for libcares.a:"
-          find "$CARES_INSTALL_PREFIX" -name "libcares.a" -exec ls -l {} \; || echo "libcares.a NOT FOUND!"
+          find "$CARES_INSTALL_PREFIX" -name "libcares.a"
+          find "$CARES_INSTALL_PREFIX" -name "c-ares.pc"
+          # Go back to the parent directory before the next step
+          cd ..
 
-          # Search specifically for libcares.pc now
-          echo "Searching for libcares.pc and showing details:"
-          find "$CARES_INSTALL_PREFIX" -name "libcares.pc" -exec ls -l {} \; -exec echo "--- Content of libcares.pc (if found): ---" \; -exec cat {} \; || echo "libcares.pc NOT FOUND!"
-
-          echo "--- Listing contents of expected install directories ---"
-          echo "Listing $CARES_INSTALL_PREFIX/lib:"
-          ls -l "$CARES_INSTALL_PREFIX/lib" || echo "Directory $CARES_INSTALL_PREFIX/lib not found or empty."
-          echo "Listing $CARES_INSTALL_PREFIX/lib/pkgconfig:"
-          ls -l "$CARES_INSTALL_PREFIX/lib/pkgconfig" || echo "Directory $CARES_INSTALL_PREFIX/lib/pkgconfig not found or empty."
-          echo "Listing $CARES_INSTALL_PREFIX/share/pkgconfig:"
-          ls -l "$CARES_INSTALL_PREFIX/share/pkgconfig" || echo "Directory $CARES_INSTALL_PREFIX/share/pkgconfig not found or empty."
-
-          cd .. # Go back to workspace root
-
-      # STEP 2: Build Backend Binary with pkg-config debugging
-      - name: Build Backend Binary with Debugging
-        # Set PKG_CONFIG_PATH to where libcares.pc was installed
+      - name: Build Backend Binary
         env:
-          PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig # Verify this path from step 1 output
+          # Point pkg-config to the custom c-ares install location
+          PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
         run: |
           echo "--- Using PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
-
-          # --- Debugging pkg-config search for libcares ---
-          echo "--- Running pkg-config --debug to trace search for libcares ---"
-          pkg-config --debug --exists libcares || echo "pkg-config --debug --exists libcares FAILED (see output above)" # CHANGED c-ares to libcares
-
-          echo "--- Checking pkg-config's own reported search path variable ---"
-          pkg-config --variable pc_path pkg-config || echo "Could not get pkg-config search path variable"
-
-          # --- Running main check for libcares ---
-          echo "--- Running main check: pkg-config --exists --print-errors libcares ---"
-          pkg-config --exists --print-errors libcares || (echo "ERROR: Final check failed - cannot find libcares via pkg-config using PKG_CONFIG_PATH=$PKG_CONFIG_PATH" && exit 1) # CHANGED c-ares to libcares
-
-          echo "--- pkg-config check passed! Getting static libs flags for libcares: ---"
-          pkg-config --static --libs libcares # CHANGED c-ares to libcares
-
+          # Verify c-ares is found via pkg-config now
+          pkg-config --exists --print-errors c-ares || (echo "ERROR: Still cannot find c-ares via pkg-config" && exit 1)
+          echo "--- c-ares static libs via pkg-config: ---"
+          pkg-config --static --libs c-ares
           echo "--- Proceeding with make (verbose) ---"
-          # Use V=1 for verbose make output to see the exact compile/link commands
-          # The Makefile itself also needs to request 'libcares' now
+          # Use V=1 for verbose make output to see the exact commands
           make -C frontend V=1
 
-      # STEP 3: Run Tests
       - name: Run Tests
         env:
-          # Pass the PKG_CONFIG_PATH here too, make test will invoke pkg-config via Makefile
+          # Pass the PKG_CONFIG_PATH to the test execution as well, in case tests link separately
           PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
-          LD_LIBRARY_PATH: ${{ github.workspace }}/cares_install/lib # May not be needed for static, but harmless
+          # LD_LIBRARY_PATH might not be strictly needed for static test binary, but include defensively
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cares_install/lib
         run: |
           echo "--- Running tests with PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
-          # Ensure the Makefile's test target also correctly uses libcares
+          # Assuming 'make test' correctly builds/runs tests
           make -C frontend test
 
-      # STEP 4: Check Binary Linkage and Size
       - name: Check Binary Linkage and Size
         run: |
           echo "--- Checking grewal binary ---"
           if [ -f frontend/grewal ]; then
             ls -lh frontend/grewal
+            # ldd should show 'not a dynamic executable' or minimal dependencies for static build
             ldd frontend/grewal
           else
             echo "grewal binary not found (build likely failed)"
+            # Fail the step explicitly if binary is missing after make
             exit 1
           fi
 
-      # STEP 5: Upload Artifact
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: grewal-binary
-          path: frontend/grewal
+          path: frontend/grewal # Ensure this path matches where make puts the binary
+          # Warn instead of error if the file isn't found (e.g., build failed)
+          # The 'deploy' job's 'needs: build' handles the actual failure check
           if-no-files-found: warn
 
-  # STEP 6: Deploy Job
   deploy:
     name: Deploy grewal binary to VM
-    needs: build
+    needs: build # Ensures this only runs if 'build' job succeeds
     runs-on: ubuntu-latest
+    # Condition: Only run on push to master branch, not PRs
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
 
     steps:
@@ -160,8 +139,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: grewal-binary
+          # Optional: Add fail-if-no-artifact: true if you want explicit failure here
+          # However, the 'needs: build' should implicitly handle this
 
       - name: Set Execute Permissions
+        # This assumes the artifact contains the binary named 'grewal' at the root
         run: chmod +x grewal
 
       - name: Set up SSH Agent
@@ -176,10 +158,8 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Copy binary to VM
-        run: >
-          scp -o StrictHostKeyChecking=no \
-          grewal \
-          ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/grewal_new_deploy
+        # *** CORRECTED SCP COMMAND ***
+        run: scp -o StrictHostKeyChecking=no grewal ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/grewal_new_deploy
 
       - name: Execute deployment script on VM
         run: |
@@ -195,5 +175,6 @@ jobs:
             echo "Removing temporary file..."
             rm /home/${{ secrets.DEPLOY_USER }}/grewal_new_deploy
             echo "Checking service status..."
+            # Use '|| true' to prevent the script failing if status returns non-zero (e.g., service failed immediately)
             sudo /usr/bin/systemctl status grewal.service --no-pager || true
           EOF
