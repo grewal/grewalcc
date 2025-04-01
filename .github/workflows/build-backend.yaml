@@ -75,8 +75,9 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # This is the UPDATED script block
           script: |
-            # These commands run ON the VM (gcc-gem-a)
+            # These commands run ON your VM (gcc-gem-a)
             echo "Connection established to ${{ secrets.SSH_HOST }} as ${{ secrets.SSH_USER }}"
             echo "Executing deployment script..."
 
@@ -84,18 +85,21 @@ jobs:
             echo "Listing files in /home/monty/..."
             ls -l /home/monty/grewal
 
-            # Copy the binary from temporary location to final destination using sudo
-            echo "Copying binary to /usr/local/bin/..."
-            # IMPORTANT: This command requires passwordless sudo setup!
+            # --- Deployment Steps ---
+            echo "Stopping grewal service..."
+            # *** REQUIRES passwordless sudo ***
+            sudo systemctl stop grewal.service
+
+            echo "Copying new binary to /usr/local/bin/..."
+            # *** REQUIRES passwordless sudo ***
             sudo cp /home/monty/grewal /usr/local/bin/grewal
 
-            # Restart the service using sudo
-            echo "Restarting grewal systemd service..."
-            # IMPORTANT: This command requires passwordless sudo setup!
-            sudo systemctl restart grewal.service
+            echo "Starting grewal service..."
+            # *** REQUIRES passwordless sudo ***
+            sudo systemctl start grewal.service
 
             # Clean up the temporarily copied file
             echo "Cleaning up temporary file /home/monty/grewal..."
             rm /home/monty/grewal
 
-            echo "Deployment script on VM completed successfully!" # This line might be reached even if sudo fails
+            echo "Deployment script on VM completed." # Note: This indicates the script finished, not necessarily that all sudo commands succeeded.
