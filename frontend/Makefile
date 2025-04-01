@@ -40,14 +40,15 @@ PKG_CFG_STATIC_LIBS = \
     openssl \
     zlib \
     liblzma \
-    libcares # <--- ADDED libcares HERE
+    libcares
 
 # Get static library flags from pkg-config for the listed packages
-STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(PKG_CFG_STATIC_LIBS))
+# Filter out -lunwind because we use the one from -static-libgcc to avoid conflict
+RAW_STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(PKG_CFG_STATIC_LIBS))
+STATIC_PKG_LDFLAGS := $(filter-out -lunwind, $(RAW_STATIC_PKG_LDFLAGS))
 
-# Added -L/usr/lib/x86_64-linux-gnu to help linker find standard libraries
-# Added -lunwind explicitly as it might be needed by other static libs
-# Note: -static-libgcc and -static-libstdc++ ensure these are statically linked
+
+# Define main linker flags
 LDFLAGS = \
     -no-pie \
     -static-libgcc \
@@ -55,7 +56,6 @@ LDFLAGS = \
     -L/usr/lib/x86_64-linux-gnu \
     -Wl,-Bstatic \
     $(STATIC_PKG_LDFLAGS) \
-    -lunwind \
     -Wl,-Bdynamic \
     -lpthread \
     -ldl
@@ -78,8 +78,11 @@ TEST_MAIN_OBJECT = $(TEST_SOURCES:.cc=.o)
 
 # Define dependencies for tests (might need similar static libs)
 GTEST_STATIC_LIBS = gtest_main gtest
-TEST_STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(GTEST_STATIC_LIBS))
+RAW_TEST_STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(GTEST_STATIC_LIBS))
+# Filter -lunwind from gtest dependencies too, just in case
+TEST_STATIC_PKG_LDFLAGS := $(filter-out -lunwind, $(RAW_TEST_STATIC_PKG_LDFLAGS))
 
+# Define linker flags for tests, using filtered static libs
 TEST_LDFLAGS = \
     -no-pie \
     -static-libgcc \
@@ -88,7 +91,6 @@ TEST_LDFLAGS = \
     -Wl,-Bstatic \
     $(STATIC_PKG_LDFLAGS) \
     $(TEST_STATIC_PKG_LDFLAGS) \
-    -lunwind \
     -Wl,-Bdynamic \
     -lpthread \
     -ldl
@@ -111,7 +113,6 @@ $(BINARY_NAME): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
 ../db/mysql_util.o: ../db/mysql_util.cc ../db/mysql_util.h
-# Ensure mysql_util.h exists or remove dependency if not needed
 	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
 test: $(TEST_BINARY)
@@ -131,8 +132,3 @@ clean:
 install: $(BINARY_NAME)
 	@echo "Install target is for manual testing/setup only."
 	@echo "Production deployment uses CI/CD."
-
-# Minor cleanup/consistency added:
-# - Added -static-libgcc to LDFLAGS and TEST_LDFLAGS for completeness.
-# - Added placeholder dependency for mysql_util.h (adjust if needed).
-# - Ensured TEST_LDFLAGS includes both main static libs and gtest static libs.
