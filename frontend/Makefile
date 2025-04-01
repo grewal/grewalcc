@@ -1,114 +1,131 @@
 # Author: Yadwinder Grewal
-# Copyright: 2024 Grewal, Inc.
+# Copyright: 2025 Grewal, Inc.
 
 # --- Configuration ---
-
 BINARY_NAME = grewal
-GIT_CLIENT = gcc-gem-a
+GIT_CLIENT = gcc-gem-a # Informational
 
 # --- Compiler and Flags ---
-
-CC = cc
-CXX = g++  # Use clang++ for C++ projects
-CXXFLAGS = -Wall -Wextra -g -std=c++17  # Enable warnings, debug info, and C++17
+CXX = g++
+CXXFLAGS = -Wall -Wextra -g -std=c++17
 
 # --- Include Paths ---
-# Use pkg-config for gRPC include paths.
-INCLUDE_DIRS := $(shell pkg-config --cflags-only-I grpc++) \
-		.  # Don't forget the current directory!
+PKG_CFG_INCLUDE_LIBS = \
+    grpc++ \
+    grpc \
+    protobuf \
+    re2 \
+    gflags \
+    libctemplate_nothreads \
+    libglog \
+    absl_base \
+    absl_flags \
+    absl_strings \
+    openssl \
+    liblzma
 
-INCLUDE_PATH = $(INCLUDE_DIRS)
+INCLUDE_DIRS := $(shell pkg-config --cflags-only-I $(PKG_CFG_INCLUDE_LIBS)) \
+    .
 
-# --- Library Paths ---
-# We *don't* need to list standard library paths explicitly.  The compiler knows them.
-# We'll let pkg-config handle the gRPC library paths.
+INCLUDE_PATH = $(patsubst %,-I%,$(INCLUDE_DIRS))
 
-# --- Libraries (Critical Order) ---
-# Let pkg-config handle *all* gRPC-related libraries. This is the key change.
+# --- Libraries for Static Linking ---
+PKG_CFG_STATIC_LIBS = \
+    grpc++ \
+    grpc \
+    protobuf \
+    re2 \
+    gflags \
+    libctemplate_nothreads \
+    libglog \
+    absl_base \
+    absl_flags \
+    absl_strings \
+    openssl \
+    zlib \
+    liblzma
 
-# Get ALL linker flags from pkg-config, including -L, -l, and -Wl flags.
-GRPC_LDFLAGS := $(shell pkg-config --libs grpc++ grpc protobuf)
+STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(PKG_CFG_STATIC_LIBS))
 
-# Other libraries (FastCGI, MariaDB, etc.) - order *still* matters!
-# REMOVE fcgi++ and fcgi if this is ONLY for the gRPC server
-OTHER_LIBS = \
-		re2 \
-		gflags \
-		ctemplate_nothreads \
-		ssl \
-		crypto \
-		pthread \
-		gtest
-
-# Combine gRPC linker flags with our other libraries, and add stdc++ LAST.
-# REMOVE fcgi++ and fcgi from LDFLAGS if this is ONLY for the gRPC server
-LDFLAGS = $(GRPC_LDFLAGS) $(addprefix -l,$(OTHER_LIBS)) -lstdc++
+# --- Linker Flags (LDFLAGS) ---
+LDFLAGS = \
+    -no-pie \
+    -static-libstdc++ \
+    -Wl,-Bstatic \
+    $(STATIC_PKG_LDFLAGS) \
+    -lunwind \
+    -Wl,-Bdynamic \
+    -lpthread \
+    -ldl
 
 # --- Source Files ---
-
 CXX_SOURCES = \
-		main.cc \
-		../security/security.cc \
-		../db/mysql_util.cc \
-		home_general.pb.cc \
-		home_general.grpc.pb.cc \
-		home_general_service.cc
+    main.cc \
+    ../security/security.cc \
+    ../db/mysql_util.cc \
+    home_general.pb.cc \
+    home_general.grpc.pb.cc \
+    home_general_service.cc
 
 CXX_OBJECTS = $(CXX_SOURCES:.cc=.o)
-
-C_SOURCES =  # You don't have any C sources, leave this empty
-C_OBJECTS = $(C_SOURCES:.c=.o)
-
-OBJECTS = $(CXX_OBJECTS) $(C_OBJECTS)
+OBJECTS = $(CXX_OBJECTS)
 
 # --- Test Configuration ---
-
 TEST_BINARY = security_test
 TEST_SOURCES = ../security/security_test.cc
-TEST_OBJECTS = $(TEST_SOURCES:.cc=.o)
+TEST_DEPS_OBJECTS = ../security/security.o
+TEST_MAIN_OBJECT = $(TEST_SOURCES:.cc=.o)
 
-# --- Installation Configuration ---
-NGINX_BIN = /etc/nginx/sbin
+GTEST_STATIC_LIBS = gtest_main gtest
+TEST_STATIC_PKG_LDFLAGS := $(shell pkg-config --static --libs $(GTEST_STATIC_LIBS))
+
+TEST_LDFLAGS = \
+    $(LDFLAGS) \
+    -Wl,-Bstatic \
+    $(TEST_STATIC_PKG_LDFLAGS) \
+    -Wl,-Bdynamic
 
 # --- Utility Commands ---
-
 RM = rm -rf
 
 # --- Targets ---
-
-.PHONY: all clean install test
+.PHONY: all clean test install
 
 all: $(BINARY_NAME)
 
-# Build the main executable (use LDFLAGS for *all* linker flags)
 $(BINARY_NAME): $(OBJECTS)
+	@echo "--- Linking main binary ($@) ---"
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+	@echo "--- Binary '$@' linked. Use 'ldd $@' to check dynamic dependencies ---"
 
-# General rule for compiling .cc files to .o files
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
-# General rule for compiling .c files to .o files (if you have any - you don't)
-%.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDE_PATH) -c $< -o $@
+../security/security.o: ../security/security.cc ../security/security.h
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
-# --- Test Targets ---
+../db/mysql_util.o: ../db/mysql_util.cc # Add header dependency if exists
+	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
 test: $(TEST_BINARY)
 	./$(TEST_BINARY)
 
-# Test executable linking (also use LDFLAGS)
-$(TEST_BINARY): $(TEST_OBJECTS) ../security/security.o
-	$(CXX) $^ $(LDFLAGS) -lgtest -lgtest_main -o $@
+$(TEST_BINARY): $(TEST_MAIN_OBJECT) $(TEST_DEPS_OBJECTS)
+	@echo "--- Linking test binary ($@) ---"
+	$(CXX) $(CXXFLAGS) $^ $(TEST_LDFLAGS) -o $@
+	@echo "--- Binary '$@' linked. Use 'ldd $@' to check dynamic dependencies ---"
 
-$(TEST_OBJECTS): %.o : %.cc ../security/security.h
+$(TEST_MAIN_OBJECT): $(TEST_SOURCES) ../security/security.h
 	$(CXX) $(CXXFLAGS) $(INCLUDE_PATH) -c $< -o $@
 
-# --- Clean and Install ---
-
 clean:
-	$(RM) $(BINARY_NAME) $(OBJECTS) $(TEST_BINARY)
+	$(RM) $(BINARY_NAME) $(OBJECTS) $(TEST_BINARY) $(TEST_MAIN_OBJECT) *.d
 
-install:
-	sudo killall $(BINARY_NAME)  # Be VERY careful with killall!
-	sudo cp $(BINARY_NAME) $(NGINX_BIN)
+install: $(BINARY_NAME)
+	@echo "Install target is intended for manual testing/setup."
+	@echo "Production deployment uses CI/CD (scp/ssh actions)."
+	# sudo killall $(BINARY_NAME) # Use 'systemctl stop' instead via deployment script
+	# sudo cp $(BINARY_NAME) /usr/local/bin/ # More standard location than /etc/nginx/sbin
+	# sudo chown root:root /usr/local/bin/$(BINARY_NAME)
+	# sudo chmod 755 /usr/local/bin/$(BINARY_NAME)
+	@echo "Consider copying to /usr/local/bin/ and using systemd unit file."
