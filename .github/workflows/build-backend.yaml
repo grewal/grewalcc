@@ -3,25 +3,26 @@ name: Build, Test, and Deploy C++ Backend
 
 on:
   push:
-    branches: [ "master" ] # Trigger on push to master branch
+    branches: [ "master" ]
   pull_request:
-    branches: [ "master" ] # Optional: Trigger on pull requests targeting master
+    branches: [ "master" ]
 
 jobs:
   build:
     name: Build and Test grewal binary
-    runs-on: ubuntu-latest # Use a standard GitHub-hosted runner
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Install Base Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
             pkg-config \
+            cmake \ # Needed to build c-ares
             libgrpc++-dev \
             libprotobuf-dev \
             protobuf-compiler \
@@ -35,45 +36,62 @@ jobs:
             zlib1g-dev \
             liblzma-dev \
             libunwind-dev \
-            libgtest-dev \
-            libc-ares-dev # Ensure c-ares dev package is installed
+            libgtest-dev
+            # We no longer rely on the system libc-ares-dev for the static lib
 
-      # <<< THIS IS THE DIAGNOSTIC STEP >>>
-      - name: Check c-ares installation and paths
+      # <<< --- Build c-ares Statically --- >>>
+      - name: Build c-ares from source
         run: |
-          echo "--- Locating libc-ares-dev files ---"
-          dpkg -L libc-ares-dev
-          echo "--- Finding libcares.a specifically ---"
-          find /usr -name "libcares.a"
-          echo "--- Checking standard library path ---"
-          ls -l /usr/lib/x86_64-linux-gnu/libcares.a || echo "libcares.a not found in standard path /usr/lib/x86_64-linux-gnu/"
-          find /usr/lib -name "libcares.a" || echo "libcares.a not found anywhere under /usr/lib"
-          echo "--- Checking pkg-config for c-ares ---"
-          pkg-config --exists --print-errors c-ares || echo "pkg-config cannot find c-ares"
-          echo "--- pkg-config c-ares version ---"
-          pkg-config --modversion c-ares || echo "pkg-config --modversion failed for c-ares"
-          echo "--- pkg-config c-ares dynamic libs ---"
-          pkg-config --libs c-ares || echo "pkg-config --libs failed for c-ares"
-          echo "--- pkg-config c-ares STATIC libs ---" # <<< This is critical!
-          pkg-config --static --libs c-ares || echo "pkg-config --static --libs failed for c-ares"
-          echo "--- End c-ares checks ---"
+          # Define an installation prefix within the workspace
+          export CARES_INSTALL_PREFIX="$GITHUB_WORKSPACE/cares_install"
+          mkdir -p "$CARES_INSTALL_PREFIX"
+          echo "Installing c-ares to $CARES_INSTALL_PREFIX"
 
+          # Clone c-ares source code (using a known stable tag is often safer)
+          git clone --depth 1 --branch cares-1_32_3 https://github.com/c-ares/c-ares.git cares_src
+          cd cares_src
+
+          # Configure using CMake - Enable static lib, disable shared, install to prefix
+          cmake . \
+            -DCMAKE_INSTALL_PREFIX="$CARES_INSTALL_PREFIX" \
+            -DCARES_STATIC=ON \
+            -DCARES_SHARED=OFF
+
+          # Build and install
+          make -j$(nproc) # Use multiple cores for faster build
+          make install
+
+          # Verify installation
+          echo "--- Checking installed c-ares files ---"
+          find "$CARES_INSTALL_PREFIX" -name "libcares.a"
+          find "$CARES_INSTALL_PREFIX" -name "c-ares.pc"
+          cd .. # Go back to workspace root
+
+      # <<< --- Build Backend Using Custom c-ares --- >>>
       - name: Build Backend Binary
-        # Assumes Makefile is in the 'frontend' directory
-        # Use V=1 for verbose make output to see the full command lines
-        run: make -C frontend V=1
+        # Set PKG_CONFIG_PATH so make's pkg-config calls find our custom c-ares.pc
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
+        run: |
+          echo "--- Using PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
+          pkg-config --exists --print-errors c-ares || echo "Still cannot find c-ares via pkg-config"
+          echo "--- c-ares static libs via pkg-config: ---"
+          pkg-config --static --libs c-ares
+          echo "--- Proceeding with make ---"
+          make -C frontend V=1
 
       - name: Run Tests
-        # Assumes 'test' target exists in frontend/Makefile and links/runs correctly
-        # This step might still be skipped if build fails
-        run: make -C frontend test
+        # Tests might also need the custom c-ares library path if they link separately
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cares_install/lib # May be needed if tests link dynamically internally
+        run: |
+          echo "--- Running tests with PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
+          make -C frontend test
 
       - name: Check Binary Linkage and Size
-        # Verify static linking (should show minimal dynamic libs like libc, libm, ld-linux)
-        # This step might still be skipped if build fails
         run: |
           echo "--- Checking grewal binary ---"
-          # Check if file exists before running ls/ldd
           if [ -f frontend/grewal ]; then
             ls -lh frontend/grewal
             ldd frontend/grewal
@@ -82,25 +100,23 @@ jobs:
           fi
 
       - name: Upload Artifact
-        # This step might still be skipped if build fails
         uses: actions/upload-artifact@v4
         with:
-          name: grewal-binary # Name of the artifact
-          path: frontend/grewal # Path to the file to upload
-          if-no-files-found: warn # Don't fail job if file doesn't exist
+          name: grewal-binary
+          path: frontend/grewal
+          if-no-files-found: warn
 
   deploy:
     name: Deploy grewal binary to VM
-    needs: build # Run only after the 'build' job succeeds
+    needs: build
     runs-on: ubuntu-latest
-    # Run only on pushes to the master branch, not on pull requests
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
 
     steps:
       - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: grewal-binary # Must match the upload name
+          name: grewal-binary
 
       - name: Set Execute Permissions
         run: chmod +x grewal
@@ -108,7 +124,7 @@ jobs:
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} # Secret containing the private SSH key
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Add Known Hosts
         run: |
@@ -136,5 +152,5 @@ jobs:
             echo "Removing temporary file..."
             rm /home/${{ secrets.DEPLOY_USER }}/grewal_new_deploy
             echo "Checking service status..."
-            sudo /usr/bin/systemctl status grewal.service --no-pager || true # Allow non-zero exit if status fails immediately
+            sudo /usr/bin/systemctl status grewal.service --no-pager || true
           EOF
