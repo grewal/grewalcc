@@ -15,8 +15,8 @@ jobs:
         uses: actions/checkout@v4
 
       # 2. Install all needed build/test tools and libraries
-      #    UPDATED LIST for static linking requirements
-      - name: Install Dependencies
+      #    UPDATED LIST for static linking requirements (comments removed)
+      - name: Install Dependencies # <<< CHECKPOINT 1
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -24,7 +24,6 @@ jobs:
             gcc \
             g++ \
             pkg-config \
-            # --- DEV packages needed for STATIC linking ---
             libgrpc-dev \
             libprotobuf-dev \
             protobuf-compiler-grpc \
@@ -35,66 +34,63 @@ jobs:
             libssl-dev \
             zlib1g-dev \
             libabsl-dev \
-            # --- DEV packages needed for testing ---
-            libgtest-dev
+            libgtest-dev # <<< Ensure all these packages exist on ubuntu-latest and provide static libs (.a)
 
       # 3. Compile the C++ backend code using static linking Makefile
-      - name: Build Backend
-        # Assumes your Makefile is in 'frontend/' and output is 'frontend/grewal'
-        # This Makefile should now perform static linking
+      - name: Build Backend # <<< CHECKPOINT 2
+        # Assumes your Makefile is in 'frontend/' and correctly configured for static linking
         run: make -C frontend
 
       # 4. Run the C++ tests
-      - name: Run Tests
-        # Assumes your 'test' target is in the 'frontend/' Makefile
+      - name: Run Tests # <<< CHECKPOINT 3
+        # Assumes your 'test' target works with static linking setup
         run: make -C frontend test
 
       # 5. Verify the binary exists and check its linkage
-      - name: List build output and check linkage
+      - name: List build output and check linkage # <<< CHECKPOINT 4
         run: |
           ls -lh frontend/grewal
           echo "--- Running ldd on the built binary (in CI) ---"
-          ldd frontend/grewal || true # Check dynamic dependencies, ignore error if fully static
+          ldd frontend/grewal || true # <<< Critical check for successful static linking
 
       # 6. Upload the compiled (hopefully static) binary so the 'deploy' job can use it
-      - name: Upload grewal artifact
+      - name: Upload grewal artifact # <<< CHECKPOINT 5
         uses: actions/upload-artifact@v4
         with:
-          name: grewal-binary # This name must match the download step in the 'deploy' job
-          path: frontend/grewal # Path to the built binary relative to the repo root
+          name: grewal-binary
+          path: frontend/grewal # Path must be correct
 
   # --- JOB 2: Deploy to VM (Runs ONLY on 'master' pushes AFTER 'build' succeeds) ---
   deploy:
     name: Deploy grewal binary to VM
-    needs: build # Depends on the 'build' job finishing successfully
+    needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master' # Only run deploy job for master branch
-
+    if: github.ref == 'refs/heads/master'
     steps:
       # 1. Download the binary artifact from the 'build' job
-      - name: Download grewal artifact
+      - name: Download grewal artifact # <<< CHECKPOINT 6
         uses: actions/download-artifact@v4
         with:
-          name: grewal-binary # Must match the upload name
+          name: grewal-binary # Must match upload name
 
       # 2. Make the downloaded binary executable (on the runner)
       - name: Set execute permissions on binary
         run: chmod +x ./grewal
 
       # 3. Copy the binary file to the target VM using SCP
-      - name: Copy binary to VM via SCP
-        uses: appleboy/scp-action@master # Use dedicated SCP action
+      - name: Copy binary to VM via SCP # <<< CHECKPOINT 7
+        uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22 # Standard SSH port
-          source: "./grewal" # The executable file in the runner's workspace
-          target: "/home/monty/" # The destination directory on the VM
+          port: 22
+          source: "./grewal"
+          target: "/home/monty/" # Destination dir exists and user has write perm
 
       # 4. Execute commands on the target VM using SSH
-      - name: Execute deployment commands on VM via SSH
-        uses: appleboy/ssh-action@master # Use SSH action (no source/target here)
+      - name: Execute deployment commands on VM via SSH # <<< CHECKPOINT 8
+        uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -103,26 +99,9 @@ jobs:
             # These commands run ON your VM (gcc-gem-a)
             echo "Connection established to ${{ secrets.SSH_HOST }} as ${{ secrets.SSH_USER }}"
             echo "Executing deployment script..."
-
-            # Verify the file arrived (optional debug)
-            echo "Listing files in /home/monty/..."
             ls -l /home/monty/grewal
-
-            # --- Deployment Steps ---
-            echo "Stopping grewal service..."
-            # *** REQUIRES passwordless sudo ***
-            sudo systemctl stop grewal.service
-
-            echo "Copying new binary to /usr/local/bin/..."
-            # *** REQUIRES passwordless sudo ***
-            sudo cp /home/monty/grewal /usr/local/bin/grewal
-
-            echo "Starting grewal service..."
-            # *** REQUIRES passwordless sudo ***
-            sudo systemctl start grewal.service
-
-            # Clean up the temporarily copied file
-            echo "Cleaning up temporary file /home/monty/grewal..."
-            rm /home/monty/grewal
-
+            sudo systemctl stop grewal.service # Assumes passwordless sudo for this user/command
+            sudo cp /home/monty/grewal /usr/local/bin/grewal # Assumes passwordless sudo for this user/command AND target dir exists
+            sudo systemctl start grewal.service # Assumes passwordless sudo for this user/command
+            rm /home/monty/grewal # Assumes user has permission to remove the file
             echo "Deployment script on VM completed."
