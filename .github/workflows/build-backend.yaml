@@ -1,156 +1,99 @@
 # .github/workflows/build-backend.yaml
-name: Build, Test, and Deploy C++ Backend
+name: Build Docker Image and Deploy via SCP
 
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - 'frontend/**'
+      - 'db/**'
+      - 'security/**'
+      - 'templates/**'
+      - 'docker/Dockerfile'
+      - '.github/workflows/build-backend.yaml'
   pull_request:
     branches: [ "master" ]
+    paths:
+      - 'frontend/**'
+      - 'db/**'
+      - 'security/**'
+      - 'templates/**'
+      - 'docker/Dockerfile'
+      - '.github/workflows/build-backend.yaml'
+
+env:
+  # Define the image name used during the build and save steps
+  # This is internal to the build process now, not for a registry
+  IMAGE_NAME: grewal-backend
+  # Define the name for the saved tarball archive
+  IMAGE_ARCHIVE_NAME: grewal-backend-image.tar
 
 jobs:
-  build:
-    name: Build and Test grewal binary
-    runs-on: ubuntu-22.04
+  build-image: # Renamed job for clarity
+    name: Build Docker Image and Save Archive
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Base Dependencies
+      - name: Set up Docker Buildx
+        # Still useful for build features even if not pushing
+        uses: docker/setup-buildx-action@v3
+
+      # REMOVED: Docker Login step (not needed)
+
+      - name: Build Docker image
+        id: docker_build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          # IMPORTANT: Set push: false as we are not pushing to a registry
+          push: false
+          # Tag locally so 'docker save' can find it
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          # Cache still helps speed up the build step itself
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Ensure image is loaded into the local docker engine for 'docker save'
+          load: true
+
+      - name: Save Docker image to tarball
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            cmake \
-            libgrpc++-dev \
-            libprotobuf-dev \
-            protobuf-compiler \
-            protobuf-compiler-grpc \
-            libre2-dev \
-            libgflags-dev \
-            libctemplate-dev \
-            libgoogle-glog-dev \
-            libabsl-dev \
-            libssl-dev \
-            zlib1g-dev \
-            liblzma-dev \
-            libunwind-dev \
-            libgtest-dev \
-            wget # Ensure wget is installed
+          echo "Saving image ${{ env.IMAGE_NAME }}:latest to ${{ env.IMAGE_ARCHIVE_NAME }}"
+          docker save -o ${{ env.IMAGE_ARCHIVE_NAME }} ${{ env.IMAGE_NAME }}:latest
+          echo "Tarball created:"
+          ls -lh ${{ env.IMAGE_ARCHIVE_NAME }}
 
-      - name: Build c-ares from source
-        run: |
-          # Use the correct version identified (1.34.4)
-          export CARES_VERSION="1.34.4"
-          export CARES_INSTALL_PREFIX="$GITHUB_WORKSPACE/cares_install"
-          mkdir -p "$CARES_INSTALL_PREFIX"
-          echo "Installing c-ares version ${CARES_VERSION} to $CARES_INSTALL_PREFIX"
-
-          # --- USE WGET/TAR WITH CORRECT VERSION AND URL ---
-          echo "Downloading c-ares source tarball (v${CARES_VERSION})..."
-          wget -q -O "c-ares-${CARES_VERSION}.tar.gz" "https://github.com/c-ares/c-ares/releases/download/v${CARES_VERSION}/c-ares-${CARES_VERSION}.tar.gz"
-          if [ ! -f "c-ares-${CARES_VERSION}.tar.gz" ]; then
-             echo "ERROR: Failed to download c-ares tarball!"
-             exit 1
-          fi
-          echo "Extracting c-ares source..."
-          mkdir cares_src
-          tar xzf "c-ares-${CARES_VERSION}.tar.gz" -C cares_src --strip-components=1
-          cd cares_src
-          # --- END WGET/TAR SECTION ---
-
-          echo "Configuring c-ares with CMake..."
-          cmake . \
-            -DCMAKE_INSTALL_PREFIX="$CARES_INSTALL_PREFIX" \
-            -DCARES_STATIC=ON \
-            -DCARES_SHARED=OFF
-          echo "Building c-ares..."
-          make -j$(nproc)
-          echo "Installing c-ares..."
-          make install
-
-          # --- ADDED DIAGNOSTICS START ---
-          echo "--- Checking installed c-ares files (Detailed) ---"
-          echo "Listing contents of $CARES_INSTALL_PREFIX:"
-          ls -lR "$CARES_INSTALL_PREFIX"
-          echo "--- Specifically checking for libcares.a ---"
-          find "$CARES_INSTALL_PREFIX" -name "libcares.a"
-          echo "--- Specifically checking for c-ares.pc ---"
-          find "$CARES_INSTALL_PREFIX" -name "c-ares.pc" || echo "c-ares.pc not found by find" # Modified slightly for clarity
-          echo "--- Specifically checking for libcares.pc ---" # Added check for the actual file
-          find "$CARES_INSTALL_PREFIX" -name "libcares.pc"
-          echo "--- Listing contents of expected pkgconfig dir ---"
-          ls -l "$CARES_INSTALL_PREFIX/lib/pkgconfig/" || echo "pkgconfig directory not found or empty"
-          echo "--- Trying to cat libcares.pc (if it exists) ---" # Changed to cat the correct file
-          cat "$CARES_INSTALL_PREFIX/lib/pkgconfig/libcares.pc" || echo "libcares.pc not found"
-          # --- ADDED DIAGNOSTICS END ---
-
-          # Go back to the parent directory before the next step
-          cd ..
-
-      - name: Build Backend Binary
-        env:
-          # Point pkg-config to the custom c-ares install location
-          PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
-        run: |
-          echo "--- Using PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
-          # Verify c-ares (now libcares) is found via pkg-config now
-          # **** CHANGED c-ares to libcares ****
-          pkg-config --exists --print-errors libcares || (echo "ERROR: Still cannot find libcares via pkg-config" && exit 1)
-          echo "--- c-ares (now libcares) static libs via pkg-config: ---"
-           # **** CHANGED c-ares to libcares ****
-          pkg-config --static --libs libcares
-          echo "--- Proceeding with make (verbose) ---"
-          # Use V=1 for verbose make output to see the exact commands
-          make -C frontend V=1
-
-      - name: Run Tests
-        env:
-          # Pass the PKG_CONFIG_PATH to the test execution as well, in case tests link separately
-          PKG_CONFIG_PATH: ${{ github.workspace }}/cares_install/lib/pkgconfig
-          # LD_LIBRARY_PATH might not be strictly needed for static test binary, but include defensively
-          LD_LIBRARY_PATH: ${{ github.workspace }}/cares_install/lib
-        run: |
-          echo "--- Running tests with PKG_CONFIG_PATH=$PKG_CONFIG_PATH ---"
-          # Assuming 'make test' correctly builds/runs tests
-          make -C frontend test
-
-      - name: Check Binary Linkage and Size
-        run: |
-          echo "--- Checking grewal binary ---"
-          if [ -f frontend/grewal ]; then
-            ls -lh frontend/grewal
-            # ldd should show 'not a dynamic executable' or minimal dependencies for static build
-            ldd frontend/grewal
-          else
-            echo "grewal binary not found (build likely failed)"
-            # Fail the step explicitly if binary is missing after make
-            exit 1
-          fi
-
-      - name: Upload Artifact
+      - name: Upload image archive artifact
+        # Upload the tarball so the deploy job can access it
         uses: actions/upload-artifact@v4
         with:
-          name: grewal-binary
-          path: frontend/grewal # Ensure this path matches where make puts the binary
-          if-no-files-found: warn
+          name: grewal-image-archive # Artifact name
+          path: ${{ env.IMAGE_ARCHIVE_NAME }} # Path to the file to upload
+          if-no-files-found: error # Fail if the tarball wasn't created
 
   deploy:
-    name: Deploy grewal binary to VM
-    needs: build # Ensures this only runs if 'build' job succeeds
+    name: Deploy Docker Image Archive via SCP
+    needs: build-image # Run after the image archive is built and saved
     runs-on: ubuntu-latest
     # Condition: Only run on push to master branch, not PRs
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
 
     steps:
-      - name: Download Artifact
+      - name: Download image archive artifact
         uses: actions/download-artifact@v4
         with:
-          name: grewal-binary
+          name: grewal-image-archive # Match artifact name from build job
+          # Artifact will be downloaded into the current directory
 
-      - name: Set Execute Permissions
-        run: chmod +x grewal
+      - name: Verify downloaded archive
+        run: |
+          echo "Checking downloaded archive:"
+          ls -lh ${{ env.IMAGE_ARCHIVE_NAME }}
 
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -163,23 +106,50 @@ jobs:
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Copy binary to VM
-        # Use corrected scp command from previous fix
-        run: scp -o StrictHostKeyChecking=no grewal ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/grewal_new_deploy
+      - name: Copy image archive to VM via SCP
+        # Using appleboy/scp-action for potentially simpler syntax
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22 # Default SSH port
+          source: ${{ env.IMAGE_ARCHIVE_NAME }} # The downloaded artifact file
+          # Target path on the VM (e.g., user's home directory)
+          target: "~/"
+          strip_components: 0 # Keep the original filename
 
-      - name: Execute deployment script on VM
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
-            echo "Stopping grewal service..."
-            sudo /usr/bin/systemctl stop grewal.service
-            echo "Copying new binary..."
-            sudo /usr/bin/cp /home/${{ secrets.DEPLOY_USER }}/grewal_new_deploy /usr/local/bin/grewal
-            echo "Setting permissions on new binary..."
-            sudo chmod +x /usr/local/bin/grewal
-            echo "Starting grewal service..."
-            sudo /usr/bin/systemctl start grewal.service
-            echo "Removing temporary file..."
-            rm /home/${{ secrets.DEPLOY_USER }}/grewal_new_deploy
+      - name: Load image and restart service on VM
+        # Using appleboy/ssh-action to run multiple commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e # Exit immediately if a command fails
+            VM_ARCHIVE_PATH="/home/${{ secrets.DEPLOY_USER }}/${{ env.IMAGE_ARCHIVE_NAME }}"
+            echo "Deployment target: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+            echo "Loading Docker image from ${VM_ARCHIVE_PATH}..."
+            # Load the image from the transferred tarball
+            docker load -i "${VM_ARCHIVE_PATH}"
+
+            echo "Restarting grewal-backend service (using the newly loaded image)..."
+            # Restart the systemd service which should use the ':latest' tag
+            sudo /usr/bin/systemctl restart grewal-backend.service
+
+            echo "Removing transferred archive: ${VM_ARCHIVE_PATH}..."
+            # Clean up the tarball from the VM
+            rm "${VM_ARCHIVE_PATH}"
+
+            echo "Waiting briefly for service to settle..."
+            sleep 5
+
             echo "Checking service status..."
-            sudo /usr/bin/systemctl status grewal.service --no-pager || true
-          EOF
+            sudo /usr/bin/systemctl status grewal-backend.service --no-pager || true
+
+            # Optional: Display logs from the container after restart
+            # echo "Displaying recent container logs..."
+            # docker logs --tail 50 grewal-backend || true # Assumes container name is 'grewal-backend'
+
+            echo "Deployment script finished."
