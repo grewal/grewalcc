@@ -108,7 +108,7 @@ jobs:
 
       - name: Copy image archive to VM via SCP
         # Using appleboy/scp-action for potentially simpler syntax
-        uses: appleboy/scp-action@v1.0.0
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
