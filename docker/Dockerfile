@@ -1,103 +1,156 @@
-# Install OS and build environment
-FROM debian:bullseye-20200224-slim
+# --- Stage 1: Builder ---
+# Use a specific Debian 12 version for reproducibility
+FROM debian:12.5 AS builder
 
-MAINTAINER Yadwinder Grewal <ygrewal@gmail.com>
+LABEL stage=builder
 
-RUN apt update && apt -y upgrade
-RUN apt -y install \
-	make gcc g++ git libfcgi-dev spawn-fcgi wget libpcre3 libpcre3-dev zlib1g-dev libre2-dev
+# Install build dependencies and compile gtest
+RUN apt-get update && \
+    export DEBIAN_FRONTEND=noninteractive && \
+    apt-get install -y --no-install-recommends \
+    # Core build tools
+    apt-utils \
+    build-essential \
+    pkg-config \
+    cmake \
+    git \
+    # gRPC and Protobuf
+    libgrpc-dev \
+    libgrpc++-dev \
+    protobuf-compiler-grpc \
+    libprotobuf-dev \
+    protobuf-compiler \
+    # Other direct dependencies from Makefile
+    libctemplate-dev \
+    libgoogle-glog-dev \
+    libabsl-dev \
+    libc-ares-dev \
+    libssl-dev \
+    zlib1g-dev \
+    # Added based on Makefile analysis
+    libre2-dev \
+    libgflags-dev \
+    liblzma-dev \
+    libmariadb-dev \
+    libgtest-dev \
+    # Tool needed for dpkg -L diagnostics
+    dpkg && \
+    \
+    # --- Compile gtest ---
+    echo "--- Compiling installed googletest source ---" && \
+    cd /usr/src/googletest && \
+    cmake CMakeLists.txt && \
+    make && \
+    # Copy the libraries to a standard location
+    cp lib/*.a /usr/lib/ && \
+    cd / && \
+    # --- End gtest compilation ---
+    \
+    # Clean up apt cache
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /usr/src/googletest
 
-# OpenSSL - build, configure & install
-ARG openssl_file=OpenSSL_1_1_1k.tar.gz
-RUN mkdir /etc/openssl
-RUN mkdir /etc/openssl/src
-WORKDIR /etc/openssl/src
-RUN wget -c --no-check-certificate https://github.com/openssl/openssl/archive/$openssl_file
-RUN tar --strip-components=1 -xvzf $openssl_file
-RUN rm -rf $openssl_file
-RUN ./config -zlib -no-deprecated --openssldir=/etc/openssl
-RUN make
-RUN make install_sw
-RUN ldconfig
-RUN make clean
+# Set base working directory for COPY
+WORKDIR /app
 
-# SSL certificates
-RUN cd ~/
-RUN mkdir /etc/letsencrypt/
-RUN mkdir /etc/letsencrypt/live/
-RUN mkdir /etc/letsencrypt/live/grewal.cc/
-RUN git clone https://grewal:napkauf26@bitbucket.org/grewal/grewal.git
-RUN cp grewal/certificates/live/grewal.cc/*.pem /etc/letsencrypt/live/grewal.cc
+# Copy the application source code into the image
+# Assumes 'docker build' is run from the project root (e.g., /home/ygrew/src/gcc-docker)
+# Ensure you have a .dockerignore file in that root directory!
+COPY . /app/
 
-# Customize and install nginx with https
-WORKDIR grewal/third_party/nginx/stable/nginx-1.20.1
-RUN ./configure --prefix=/etc/nginx \
-		--sbin-path=/etc/nginx/sbin/nginx \
-		--build=grewal_gcloud_DOCKER_autobuild \
-                --without-http_charset_module \
-                --without-http_ssi_module \
-                --without-http_userid_module \
-                --without-http_access_module \
-                --without-http_auth_basic_module \
-                --without-http_mirror_module \
-                --without-http_autoindex_module \
-                --without-http_geo_module \
-                --without-http_map_module \
-                --without-http_split_clients_module \
-                --without-http_referer_module \
-                --without-http_proxy_module \
-                --without-http_uwsgi_module \
-                --without-http_scgi_module \
-                --without-http_grpc_module \
-                --without-http_memcached_module \
-                --without-http_limit_conn_module \
-                --without-http_limit_req_module \
-                --without-http_empty_gif_module \
-                --without-http_browser_module \
-                --without-http_upstream_hash_module \
-                --without-http_upstream_ip_hash_module \
-                --without-http_upstream_least_conn_module \
-                --without-http_upstream_random_module \
-                --without-http_upstream_keepalive_module \
-                --without-http_upstream_zone_module \
-                --without-mail_pop3_module \
-                --without-mail_imap_module \
-                --without-mail_smtp_module \
-                --without-stream_limit_conn_module \
-                --without-stream_access_module \
-                --without-stream_geo_module \
-                --without-stream_map_module \
-                --without-stream_split_clients_module \
-                --without-stream_return_module \
-                --without-stream_upstream_hash_module \
-                --without-stream_upstream_least_conn_module \
-                --without-stream_upstream_random_module \
-                --without-stream_upstream_zone_module \
-		--with-http_ssl_module \
-		--with-pcre \
-		--with-http_v2_module \
-		--with-http_gzip_static_module \
-                --with-openssl=/etc/openssl/src
-RUN make
-RUN make install
-RUN make clean
+# Change WORKDIR to where the Makefile is located inside the image
+WORKDIR /app/frontend
 
-# Build grewal binary
-RUN git clone https://grewal:napkauf26@bitbucket.org/grewal/grewal.git
-WORKDIR grewal/frontend
-RUN make
-RUN make install
-RUN make clean
-RUN cd ../..
-RUN rm -rf grewal
+# Build the application using the Makefile from the current directory (/app/frontend)
+# Add diagnostics before make
+RUN echo "--- DIAGNOSTICS ---" && \
+    echo "PATH=$PATH" && \
+    echo "--- which pkg-config ---" && \
+    which pkg-config && \
+    echo "--- which grpc_cpp_plugin ---" && \
+    which grpc_cpp_plugin && \
+    echo "--- pkg-config --version ---" && \
+    pkg-config --version && \
+    echo "---------------------" && \
+    echo "--- Setting up pkg-config for grpc++ ---" && \
+    ln -sf grpc.pc /usr/lib/x86_64-linux-gnu/pkgconfig/grpc++.pc && \
+    echo "--- Verifying symlink ---" && \
+    ls -l /usr/lib/x86_64-linux-gnu/pkgconfig/grpc* && \
+    export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH} && \
+    echo "--- Checking .pc file contents ---" && \
+    echo ">>> Content of grpc.pc:" && \
+    cat /usr/lib/x86_64-linux-gnu/pkgconfig/grpc.pc && \
+    echo ">>> Content of protobuf.pc:" && \
+    cat /usr/lib/x86_64-linux-gnu/pkgconfig/protobuf.pc && \
+    echo "--- Checking pkg-config output directly ---" && \
+    echo ">>> pkg-config --cflags grpc++" && \
+    pkg-config --cflags grpc++ && \
+    echo ">>> pkg-config --libs grpc++" && \
+    pkg-config --libs grpc++ && \
+    echo ">>> pkg-config --cflags protobuf" && \
+    pkg-config --cflags protobuf && \
+    echo ">>> pkg-config --libs protobuf" && \
+    pkg-config --libs protobuf && \
+    echo "----------------------------------" && \
+    echo "--- Verifying libgrpc-dev Contents ---" && \
+    echo ">>> Listing ALL files from libgrpc-dev:" && \
+    dpkg -L libgrpc-dev || echo "dpkg -L libgrpc-dev command failed." && \
+    echo "----------------------------------" && \
+    echo "--- Running make clean && make V=1 all ---" && \
+    # IMPORTANT: Makefile still has the '-I/usr/include' from previous step for this test run
+    # We will change it to the correct path (if found by dpkg -L) in the next step
+    make clean && make V=1 all
 
-# Remove build binaries
-RUN apt -y remove gcc g++ make git wget
-RUN apt -y autoremove
-RUN apt -y autoclean
+# --- Stage 2: Final Runtime Image ---
+# Use the same base image to ensure GLIBC and core library compatibility
+FROM debian:12.5
 
-# Open https port 443 
-EXPOSE 443
+# Install only RUNTIME dependencies
+RUN apt-get update && \
+    export DEBIAN_FRONTEND=noninteractive && \
+    apt-get install -y --no-install-recommends \
+    # Runtime libraries identified for Debian 12 (Bookworm)
+    libgrpc++1.51 \
+    libprotobuf32 \
+    libctemplate3 \
+    libgoogle-glog0v6 \
+    libabsl20220623 \
+    libc-ares2 \
+    libssl3 \
+    zlib1g \
+    libre2-dev \
+    libgflags2.2 \
+    liblzma5 \
+    libmariadb3 \
+    # Base C/C++ runtime
+    libc6 \
+    libgcc-s1 \
+    libstdc++6 \
+    && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Run the grewal https server & link grewal binary to fcgi server at port:8000
-CMD /etc/nginx/sbin/nginx && spawn-fcgi -p 8000 -n /etc/nginx/sbin/grewal
+# Set final working directory (optional, '/app' is fine)
+WORKDIR /app
+
+# Copy the compiled binary FROM the builder stage's correct location
+# The binary will be in /app/frontend/grewal in the builder stage
+COPY --from=builder /app/frontend/grewal /app/grewal
+
+# Copy the templates directory from the builder stage
+COPY --from=builder /app/frontend/templates /app/templates
+
+# Example: If you had config files relative to frontend:
+# COPY --from=builder /app/frontend/config/ /app/config/
+
+# Define the user to run as (optional but good practice to not run as root)
+# RUN useradd --system --no-create-home appuser
+# USER appuser
+
+# Expose the port the application listens on
+EXPOSE 50051
+
+# Define the command to run the application
+ENTRYPOINT ["/app/grewal"]
+# CMD can provide default arguments if needed
+# CMD ["--config", "/app/config/grewal.cfg"]
