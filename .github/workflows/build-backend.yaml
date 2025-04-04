@@ -106,6 +106,14 @@ jobs:
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      - name: Test TCP Connection to VM Port 22
+        run: |
+          echo "Attempting TCP connection to ${{ secrets.DEPLOY_HOST }}:22..."
+          # Use nc with a 5-second timeout (-w5) and verbose output (-v)
+          # The -z flag tells nc to scan for listening daemons without sending data
+          nc -w 5 -zv ${{ secrets.DEPLOY_HOST }} 22
+          echo "TCP connection test finished."
+
       - name: Copy image archive to VM via SCP
         # Using appleboy/scp-action for potentially simpler syntax
         uses: appleboy/scp-action@v0.1.7
