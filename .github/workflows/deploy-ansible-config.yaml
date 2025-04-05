@@ -1,0 +1,54 @@
+# .github/workflows/deploy-ansible-config.yaml
+name: Deploy Configuration via Ansible
+
+# Triggers: Run on pushes to master IF ansible files changed
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'ansible/**'
+      - '.github/workflows/deploy-ansible-config.yaml' # Also run if workflow itself changes
+
+jobs:
+  apply-config:
+    name: Apply Ansible Playbook
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Get the repository code (including ansible files)
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Set up SSH agent with the private key needed to access the VM
+      #    Uses the SAME secret as your build-backend workflow for consistency
+      - name: Set up SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} # Key for gcc-gem-a connection
+
+      # 3. Add the server's SSH key fingerprint to known_hosts
+      #    Prevents interactive prompts and MITM warnings
+      - name: Add Known Hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      # 4. Install Ansible on the GitHub Actions runner
+      - name: Install Ansible
+        run: sudo apt-get update && sudo apt-get install ansible -y
+
+      # 5. Run the Ansible playbook
+      #    Uses inventory & playbook from the checked-out repo
+      #    Relies on SSH Agent for authentication (no key file needed in command)
+      #    Assumes passwordless sudo for 'monty' on gcc-gem-a (no --ask-become-pass)
+      - name: Run Ansible Playbook
+        run: |
+          ansible-playbook \
+            -i ansible/inventory.ini \
+            ansible/htop_playbook.yml
+        env:
+          # Disable host key checking as a fallback/less secure alternative to Add Known Hosts
+          # Good practice is to ensure Add Known Hosts works reliably
+          ANSIBLE_HOST_KEY_CHECKING: False
