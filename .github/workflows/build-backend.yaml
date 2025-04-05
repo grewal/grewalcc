@@ -1,9 +1,13 @@
 # .github/workflows/build-backend.yaml
-name: Build Docker Image and Deploy via SCP
+# Workflow name displayed on GitHub Actions tab
+name: Build and Deploy Backend via Docker Hub
 
+# Triggers for the workflow
 on:
+  # Run on pushes to the master branch...
   push:
     branches: [ "master" ]
+    # ...but only if files in these paths changed
     paths:
       - 'frontend/**'
       - 'db/**'
@@ -11,8 +15,10 @@ on:
       - 'templates/**'
       - 'docker/Dockerfile'
       - '.github/workflows/build-backend.yaml'
+  # Also run on pull requests targeting the master branch...
   pull_request:
     branches: [ "master" ]
+    # ...if files in these paths changed (useful for testing changes before merge)
     paths:
       - 'frontend/**'
       - 'db/**'
@@ -21,135 +27,135 @@ on:
       - 'docker/Dockerfile'
       - '.github/workflows/build-backend.yaml'
 
+# Environment variables available to all jobs in this workflow
 env:
-  # Define the image name used during the build and save steps
-  # This is internal to the build process now, not for a registry
-  IMAGE_NAME: grewal-backend
-  # Define the name for the saved tarball archive
-  IMAGE_ARCHIVE_NAME: grewal-backend-image.tar
+  # Define the target Docker Hub repository name
+  # Used in 'build-image' for tagging and 'deploy' for pulling
+  DOCKER_IMAGE_NAME: grewal/grewal
 
+# Defines the jobs that make up the workflow
 jobs:
-  build-image: # Renamed job for clarity
-    name: Build Docker Image and Save Archive
+  # First job: Build the image and push it to Docker Hub
+  build-image:
+    # Name displayed for this job in the GitHub Actions UI
+    name: Build and Push Docker Image to Docker Hub
+    # Specifies the type of runner machine to use
     runs-on: ubuntu-latest
 
+    # Sequence of steps executed within the 'build-image' job
     steps:
+      # Step 1: Check out the repository code onto the runner
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # Uses a standard GitHub Action for checking out code
 
+      # Step 2: Set up Docker Buildx, an enhanced builder backend for Docker
       - name: Set up Docker Buildx
-        # Still useful for build features even if not pushing
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3 # Enables features like multi-platform builds and better caching
 
-      # REMOVED: Docker Login step (not needed)
-
-      - name: Build Docker image
-        id: docker_build
-        uses: docker/build-push-action@v5
+      # Step 3: Log in to Docker Hub using stored secrets
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3 # Uses a standard Docker Action for login
         with:
+          # Your Docker Hub username from GitHub Secrets
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          # Your Docker Hub access token from GitHub Secrets (used as password)
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Step 4: Build the Docker image and push it to Docker Hub
+      - name: Build and push Docker image
+        id: docker_build # Assign an ID to this step (optional, useful for outputs)
+        uses: docker/build-push-action@v5 # Uses a standard Docker Action for build & push
+        with:
+          # Specifies the build context (directory containing Dockerfile and source)
           context: .
+          # Specifies the path to the Dockerfile
           file: ./docker/Dockerfile
-          # IMPORTANT: Set push: false as we are not pushing to a registry
-          push: false
-          # Tag locally so 'docker save' can find it
+          # Tells the action to push the image to the registry after building
+          push: true
+          # Tags the image with 'latest' and the specific commit SHA
+          # Uses the DOCKER_IMAGE_NAME defined in 'env'
           tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          # Cache still helps speed up the build step itself
+            ${{ env.DOCKER_IMAGE_NAME }}:latest
+            ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          # Enables caching using GitHub Actions cache to speed up subsequent builds
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Ensure image is loaded into the local docker engine for 'docker save'
-          load: true
 
-      - name: Save Docker image to tarball
-        run: |
-          echo "Saving image ${{ env.IMAGE_NAME }}:latest to ${{ env.IMAGE_ARCHIVE_NAME }}"
-          docker save -o ${{ env.IMAGE_ARCHIVE_NAME }} ${{ env.IMAGE_NAME }}:latest
-          echo "Tarball created:"
-          ls -lh ${{ env.IMAGE_ARCHIVE_NAME }}
-
-      - name: Upload image archive artifact
-        # Upload the tarball so the deploy job can access it
-        uses: actions/upload-artifact@v4
-        with:
-          name: grewal-image-archive # Artifact name
-          path: ${{ env.IMAGE_ARCHIVE_NAME }} # Path to the file to upload
-          if-no-files-found: error # Fail if the tarball wasn't created
-
+  # Second job: Deploy the image to the VM by pulling from Docker Hub
   deploy:
-    name: Deploy Docker Image Archive via SCP
-    needs: build-image # Run after the image archive is built and saved
+    # Name displayed for this job in the GitHub Actions UI
+    name: Pull Image and Restart Service on VM
+    # Specifies that this job depends on 'build-image' finishing successfully
+    needs: build-image
+    # Specifies the type of runner machine to use (can be different from build job)
     runs-on: ubuntu-latest
-    # Condition: Only run on push to master branch, not PRs
+    # Condition: Only run this job if the event was a push to the 'master' branch
+    # Prevents deploying pull request builds automatically
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
 
+    # Sequence of steps executed within the 'deploy' job
     steps:
-      - name: Download image archive artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: grewal-image-archive # Match artifact name from build job
-          # Artifact will be downloaded into the current directory
-
-      - name: Verify downloaded archive
-        run: |
-          echo "Checking downloaded archive:"
-          ls -lh ${{ env.IMAGE_ARCHIVE_NAME }}
-
+      # Step 1: Set up SSH Agent to handle the private key securely
       - name: Set up SSH Agent
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: webfactory/ssh-agent@v0.9.0 # Action to load SSH key for authentication
         with:
+          # The private SSH key (stored as a GitHub Secret) needed to access the VM
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
+      # Step 2: Add the VM's host key to the runner's known_hosts file
+      # Prevents interactive prompts about host authenticity during SSH connection
       - name: Add Known Hosts
         run: |
-          mkdir -p ~/.ssh
+          mkdir -p ~/.ssh # Ensure the .ssh directory exists
+          # Scan for the host key of the deployment server and append it
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+          # Set correct permissions for the known_hosts file
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Copy image archive to VM via SCP
-        # Using appleboy/scp-action for potentially simpler syntax
-        uses: appleboy/scp-action@v0.1.7
+      # Step 3: SSH into the VM and execute deployment commands
+      - name: Pull image and restart service on VM
+        uses: appleboy/ssh-action@v1.0.3 # Action to execute commands remotely via SSH
         with:
+          # The hostname or IP address of the deployment VM (from GitHub Secrets)
           host: ${{ secrets.DEPLOY_HOST }}
+          # The username to log in as on the VM (from GitHub Secrets)
           username: ${{ secrets.DEPLOY_USER }}
+          # The private SSH key (already loaded by ssh-agent, but some actions need it explicitly)
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22 # Default SSH port
-          source: ${{ env.IMAGE_ARCHIVE_NAME }} # The downloaded artifact file
-          # Target path on the VM (e.g., user's home directory)
-          target: "~/"
-          strip_components: 0 # Keep the original filename
-
-      - name: Load image and restart service on VM
-        # Using appleboy/ssh-action to run multiple commands
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # The multi-line script to execute on the remote VM
           script: |
-            set -e # Exit immediately if a command fails
-            VM_ARCHIVE_PATH="/home/${{ secrets.DEPLOY_USER }}/${{ env.IMAGE_ARCHIVE_NAME }}"
-            echo "Deployment target: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
-            echo "Loading Docker image from ${VM_ARCHIVE_PATH}..."
-            # Load the image from the transferred tarball
-            docker load -i "${VM_ARCHIVE_PATH}"
+            set -e # Configure the script to exit immediately if any command fails
+            # Define the full Docker image name to pull (using env var)
+            IMAGE_TO_PULL="${{ env.DOCKER_IMAGE_NAME }}:latest"
 
-            echo "Restarting grewal-backend service (using the newly loaded image)..."
-            # Restart the systemd service which should use the ':latest' tag
+            # Log the target server for information
+            echo "Deployment target: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+            # Log the action being performed
+            echo "Pulling latest Docker image: ${IMAGE_TO_PULL}..."
+            # Execute 'docker pull' on the VM to download the specified image from Docker Hub
+            docker pull "${IMAGE_TO_PULL}"
+
+            # Log the next action
+            echo "Restarting grewal-backend service (using the newly pulled image)..."
+            # Use sudo to restart the systemd service that runs the Docker container
+            # The service definition should use 'grewal/grewal:latest'
             sudo /usr/bin/systemctl restart grewal-backend.service
 
-            echo "Removing transferred archive: ${VM_ARCHIVE_PATH}..."
-            # Clean up the tarball from the VM
-            rm "${VM_ARCHIVE_PATH}"
-
+            # Log the waiting action
             echo "Waiting briefly for service to settle..."
+            # Pause for a few seconds to allow the container to potentially start up
             sleep 5
 
+            # Log the status check action
             echo "Checking service status..."
+            # Check the status of the systemd service. '--no-pager' prevents interactive mode.
+            # '|| true' ensures the workflow step doesn't fail if the service status check itself errors briefly after restart
             sudo /usr/bin/systemctl status grewal-backend.service --no-pager || true
 
-            # Optional: Display logs from the container after restart
+            # Optional: Command to display recent logs from the running container (commented out)
             # echo "Displaying recent container logs..."
-            # docker logs --tail 50 grewal-backend || true # Assumes container name is 'grewal-backend'
+            # docker logs --tail 50 grewal-backend || true
 
+            # Log completion of the script
             echo "Deployment script finished."
+
