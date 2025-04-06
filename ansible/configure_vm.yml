@@ -1,7 +1,11 @@
 ---
-- name: Configure base VM settings and services
-  hosts: gcc-gem-a
-  become: yes
+- name: Configure gcc-gem-a VM
+  hosts: gcc-gem-a # Target the specific host from inventory.ini
+  become: yes # Use sudo for tasks by default within this play
 
   roles:
+    # Ensure Consul is configured and running first
+    - consul
+
+    # Then configure the backend service which depends on Consul
     - grewal-backend
