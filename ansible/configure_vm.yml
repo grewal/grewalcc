@@ -13,6 +13,12 @@
         mode: '0644'
       notify: Reload systemd and restart grewal-backend # This triggers the handler by name/listen topic
 
+    - name: Ensure grewal-backend service is started and enabled
+      ansible.builtin.systemd:
+        name: grewal-backend.service # The service name
+        state: started               # Ensure the service is running
+        enabled: yes                 # Ensure the service starts on boot
+
   handlers:
     - name: Reload systemd daemon                     # Task 1 within the handler sequence
       listen: "Reload systemd and restart grewal-backend" # Match the notify name
