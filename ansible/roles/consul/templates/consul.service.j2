@@ -1,0 +1,23 @@
+[Unit]
+Description=Consul Service Discovery Agent (Dev Mode)
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+# Run as root to match manual 'sudo' command and ensure permissions for config/data dirs
+User=root
+Group=root
+
+# The command to start Consul in dev mode, as you provided
+ExecStart=/usr/bin/consul agent -dev -client=0.0.0.0 -ui -config-dir=/etc/consul.d/
+
+# Restart behaviour
+Restart=on-failure
+RestartSec=5s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
