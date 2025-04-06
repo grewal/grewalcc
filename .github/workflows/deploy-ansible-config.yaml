@@ -34,17 +34,24 @@ jobs:
       run: |
         sudo apt-get update && sudo apt-get install ansible -y
 
-    # --- MODIFIED STEP ---
+    # --- NEW STEP ADDED ---
+    - name: Test Vault Decryption in CI
+      env:
+        ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+      run: |
+        echo "Attempting to view vaulted file..."
+        ansible-vault view ansible/vars/secrets.yml
+        echo "Vault view command finished."
+      # Continue-on-error is false by default, so if this fails, the workflow stops.
+    # --- END NEW STEP ---
+
     - name: Run ansible-playbook
-      # Added ANSIBLE_VAULT_PASSWORD to the env block
       env:
         ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
         ANSIBLE_HOST_KEY_CHECKING: false # Alternative/belt-and-suspenders for known_hosts
         SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }} # Make sure ssh-agent socket is available
         SSH_AGENT_PID: ${{ env.SSH_AGENT_PID }} # Make sure ssh-agent pid is available
-      # The run command itself remains the same
       run: |
         ansible-playbook \
           -i ansible/inventory.ini \
           ansible/configure_vm.yml
-    # --- END MODIFIED STEP ---
