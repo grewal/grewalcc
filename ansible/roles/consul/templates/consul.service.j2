@@ -9,7 +9,7 @@ User=root
 Group=root
 
 # The command to start Consul in dev mode, as you provided
-ExecStart=/usr/bin/consul agent -dev -client=0.0.0.0 -ui -config-dir=/etc/consul.d/
+ExecStart=/usr/bin/consul agent -dev -client=0.0.0.0 -ui -config-dir=/etc/consul.d/ -enable-central-service-config
 
 # Restart behaviour
 Restart=on-failure
