@@ -1,0 +1,15 @@
+---
+- name: Ensure grewal-backend systemd unit file is deployed
+  ansible.builtin.template:
+    src: grewal-backend.service.j2 # Ansible automatically looks in the role's templates/ dir
+    dest: /etc/systemd/system/grewal-backend.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload systemd and restart grewal-backend # This notifies handlers defined in the role or playbook
+
+- name: Ensure grewal-backend service is started and enabled
+  ansible.builtin.systemd:
+    name: grewal-backend.service # The service name
+    state: started               # Ensure the service is running
+    enabled: yes                 # Ensure the service starts on boot

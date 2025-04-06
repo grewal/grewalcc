@@ -1,0 +1,11 @@
+---
+- name: Reload systemd daemon
+  listen: "Reload systemd and restart grewal-backend" # Matches the notify topic from the task
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Restart grewal-backend service
+  listen: "Reload systemd and restart grewal-backend" # Matches the notify topic from the task
+  ansible.builtin.systemd:
+    name: grewal-backend.service
+    state: restarted
