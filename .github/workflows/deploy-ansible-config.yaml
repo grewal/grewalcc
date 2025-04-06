@@ -34,24 +34,31 @@ jobs:
       run: |
         sudo apt-get update && sudo apt-get install ansible -y
 
-    # --- NEW STEP ADDED ---
+    # --- MODIFIED STEP ---
     - name: Test Vault Decryption in CI
       env:
+        # Keep the env var for potential other uses or just clarity, though not strictly needed for the command now
         ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
       run: |
-        echo "Attempting to view vaulted file..."
-        ansible-vault view ansible/vars/secrets.yml
+        echo "Attempting to view vaulted file using --vault-password-file..."
+        # Use process substitution to pass the password via a file descriptor
+        ansible-vault view --vault-password-file <(echo "$ANSIBLE_VAULT_PASSWORD") ansible/vars/secrets.yml
         echo "Vault view command finished."
       # Continue-on-error is false by default, so if this fails, the workflow stops.
-    # --- END NEW STEP ---
+    # --- END MODIFIED STEP ---
 
+    # --- MODIFIED STEP ---
     - name: Run ansible-playbook
       env:
+        # Keep env var, might be needed if some module internally relies on it (unlikely but safe)
         ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
         ANSIBLE_HOST_KEY_CHECKING: false # Alternative/belt-and-suspenders for known_hosts
         SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }} # Make sure ssh-agent socket is available
         SSH_AGENT_PID: ${{ env.SSH_AGENT_PID }} # Make sure ssh-agent pid is available
       run: |
+        echo "Running playbook with explicit vault password file..."
         ansible-playbook \
           -i ansible/inventory.ini \
+          --vault-password-file <(echo "$ANSIBLE_VAULT_PASSWORD") \
           ansible/configure_vm.yml
+    # --- END MODIFIED STEP ---
