@@ -1,0 +1,42 @@
+# ~/src/gcc-gem-a/ansible/roles/envoy/tasks/main.yml
+---
+- name: Deploy Envoy systemd unit file
+  ansible.builtin.template:
+    src: envoy.service.j2
+    dest: /etc/systemd/system/envoy.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload systemd and restart envoy # Notify handler if service file changes
+  become: true # Run this task as root (sudo)
+
+- name: Ensure Envoy config directory exists
+  ansible.builtin.file:
+    path: /etc/envoy # Directory where envoy.yaml will be placed
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true # Run this task as root (sudo)
+
+- name: Deploy Envoy configuration file (envoy.yaml)
+  ansible.builtin.template:
+    src: envoy.yaml.j2         # Source is our new template
+    dest: /etc/envoy/envoy.yaml # Destination matches path in service file volume mount
+    owner: root
+    group: root
+    mode: '0644'
+  # vars: block removed from here
+  notify: Reload systemd and restart envoy # Notify handler if config file changes
+  become: true # Run this task as root (sudo)
+
+- name: Ensure Envoy service is started and enabled
+  ansible.builtin.systemd:
+    name: envoy.service
+    state: started
+    enabled: true
+    # Note: daemon_reload only strictly needed if unit file changes,
+    # but handler already covers restart logic for both unit and config changes.
+    # Keeping daemon_reload here doesn't hurt.
+    daemon_reload: true
+  become: true # Run this task as root (sudo)

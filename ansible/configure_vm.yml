@@ -1,11 +1,19 @@
+# ~/src/gcc-gem-a/ansible/configure_vm.yml
 ---
 - name: Configure gcc-gem-a VM
   hosts: gcc-gem-a # Target the specific host from inventory.ini
   become: yes # Use sudo for tasks by default within this play
 
+  # Add this section to load vaulted variables globally
+  vars_files:
+    - vars/secrets.yml
+
   roles:
     # Ensure Consul is configured and running first
     - consul
 
-    # Then configure the backend service which depends on Consul
+    # Add the Envoy role after Consul
+    - envoy
+
+    # Then configure the backend service
     - grewal-backend
