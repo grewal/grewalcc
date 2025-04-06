@@ -1,4 +1,4 @@
-# ~/src/gcc-gem-a/ansible/roles/envoy/templates/envoy.service.j2
+# {{ ansible_managed }} - Template: ~/src/gcc-gem-a/ansible/roles/envoy/templates/envoy.service.j2
 [Unit]
 Description=Envoy Proxy Container
 Requires=docker.service # Depends on docker daemon being active
@@ -20,7 +20,7 @@ TimeoutStopSec=30
 ExecStart=/usr/bin/docker run --rm --name envoy-svc \
   -p 8888:8888 \
   -p 9901:9901 \
-  -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml \ # <-- Host path updated
+  -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml \
   envoyproxy/envoy:v1.33.1
 
 # Command to gracefully stop the container using the name defined in ExecStart
