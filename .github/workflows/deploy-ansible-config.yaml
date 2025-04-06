@@ -34,12 +34,17 @@ jobs:
       run: |
         sudo apt-get update && sudo apt-get install ansible -y
 
+    # --- MODIFIED STEP ---
     - name: Run ansible-playbook
-      run: |
-        ansible-playbook \
-          -i ansible/inventory.ini \
-          ansible/configure_vm.yml # <-- This is the corrected filename
+      # Added ANSIBLE_VAULT_PASSWORD to the env block
       env:
+        ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
         ANSIBLE_HOST_KEY_CHECKING: false # Alternative/belt-and-suspenders for known_hosts
         SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }} # Make sure ssh-agent socket is available
         SSH_AGENT_PID: ${{ env.SSH_AGENT_PID }} # Make sure ssh-agent pid is available
+      # The run command itself remains the same
+      run: |
+        ansible-playbook \
+          -i ansible/inventory.ini \
+          ansible/configure_vm.yml
+    # --- END MODIFIED STEP ---
