@@ -1,0 +1,35 @@
+# ~/src/gcc-gem-a/ansible/roles/envoy/templates/envoy.service.j2
+[Unit]
+Description=Envoy Proxy Container
+Requires=docker.service # Depends on docker daemon being active
+After=docker.service network-online.target consul.service # Start after docker and consul service and network is confirmed online
+
+[Service]
+# Using root to ensure docker command permissions
+User=root
+Group=root
+
+# Timeouts for start/stop operations
+TimeoutStartSec=0
+TimeoutStopSec=30
+
+# Command to start the container.
+# We use '--rm' so systemd doesn't have to clean up stopped containers manually.
+# We give it a specific name 'envoy-svc' for ExecStop to easily target it.
+# Note: No '-d' flag needed, systemd manages the process lifecycle.
+ExecStart=/usr/bin/docker run --rm --name envoy-svc \
+  -p 8888:8888 \
+  -p 9901:9901 \
+  -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml \ # <-- Host path updated
+  envoyproxy/envoy:v1.33.1
+
+# Command to gracefully stop the container using the name defined in ExecStart
+ExecStop=/usr/bin/docker stop envoy-svc
+
+# Restart the service if it fails
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+# Enable the service to start on boot
