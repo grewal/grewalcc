@@ -10,10 +10,10 @@
 
   roles:
     # Ensure Consul is configured and running first
-    - consul
+    # - consul  # Temporarily disabled for testing grewal-backend
 
     # Add the Envoy role after Consul
-    - envoy
+    # - envoy   # Temporarily disabled for testing grewal-backend
 
     # Then configure the backend service
     - grewal-backend
