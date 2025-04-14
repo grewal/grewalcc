@@ -1,4 +1,37 @@
 ---
+# tasks/main.yml for consul role
+
+- name: Ensure Consul config directory exists
+  ansible.builtin.file:
+    path: /etc/consul.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: yes
+
+# Note: The systemd unit file has ExecStartPre for data dir creation/permissions
+# as a fallback, but managing it here with Ansible is preferred for idempotency.
+- name: Ensure Consul data directory exists on host
+  ansible.builtin.file:
+    path: /opt/consul/data
+    state: directory
+    # uid 100 / gid 1000 correspond to the 'consul' user inside the official container
+    owner: '100'
+    group: '1000'
+    mode: '0775'
+  become: yes
+
+- name: Deploy Consul HCL configuration file
+  ansible.builtin.template:
+    src: consul.hcl.j2
+    dest: /etc/consul.d/consul.hcl
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: Reload systemd and restart consul # Restart consul if config changes
+
 - name: Deploy Consul systemd unit file
   ansible.builtin.template:
     src: consul.service.j2
@@ -7,11 +40,13 @@
     group: root
     mode: '0644'
   become: yes
-  notify: Reload systemd and restart consul
+  notify: Reload systemd and restart consul # Restart consul if unit file changes
 
 - name: Ensure Consul service is started and enabled
   ansible.builtin.systemd:
-    name: consul
+    name: consul.service # Use full name for clarity
     state: started
     enabled: yes
+    # Explicitly reload daemon if unit file changed via handler
+    # daemon_reload: yes # Handled by the handler now
   become: yes
