@@ -1,35 +1,31 @@
-# {{ ansible_managed }} - Template: ~/src/gcc-gem-a/ansible/roles/envoy/templates/envoy.service.j2
+# {{ ansible_managed }} - Template: ~/src/gcc-ansible-wsl/ansible/roles/envoy/templates/envoy.service.j2
 [Unit]
-Description=Envoy Proxy Container
-Requires=docker.service # Depends on docker daemon being active
-After=docker.service network-online.target consul.service # Start after docker and consul service and network is confirmed online
+Description=Envoy Proxy Container (Host Network)
+Requires=docker.service network-online.target consul.service
+After=docker.service network-online.target consul.service
 
 [Service]
-# Using root to ensure docker command permissions
-User=root
-Group=root
+Restart=always
+RestartSec=10s
 
-# Timeouts for start/stop operations
-TimeoutStartSec=0
-TimeoutStopSec=30
+# Ensure Envoy config directory exists on host (Ansible manages this primarily)
+ExecStartPre=-/bin/mkdir -p /etc/envoy
 
-# Command to start the container.
-# We use '--rm' so systemd doesn't have to clean up stopped containers manually.
-# We give it a specific name 'envoy-svc' for ExecStop to easily target it.
-# Note: No '-d' flag needed, systemd manages the process lifecycle.
-ExecStart=/usr/bin/docker run --rm --name envoy-svc \
-  -p 8888:8888 \
-  -p 9901:9901 \
-  -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml \
-  envoyproxy/envoy:v1.33.1
+# Stop and remove any existing container with the same name first
+ExecStartPre=-/usr/bin/docker stop envoy-svc
+ExecStartPre=-/usr/bin/docker rm envoy-svc
 
-# Command to gracefully stop the container using the name defined in ExecStart
+# Pull the specified image (optional)
+# ExecStartPre=-/usr/bin/docker pull envoyproxy/envoy:v1.31.1
+
+# Run the Envoy container using host networking
+# Mount the config file read-only
+ExecStart=/usr/bin/docker run --rm --network host --name envoy-svc \
+  -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro \
+  envoyproxy/envoy:v1.31.1 -c /etc/envoy/envoy.yaml
+
+# Stop the container gracefully
 ExecStop=/usr/bin/docker stop envoy-svc
-
-# Restart the service if it fails
-Restart=on-failure
-RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target
-# Enable the service to start on boot

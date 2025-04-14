@@ -1,23 +1,25 @@
-# ~/src/gcc-gem-a/ansible/roles/envoy/templates/envoy.yaml.j2
+# Ansible managed - Template: ~/src/gcc-ansible-wsl/ansible/roles/envoy/templates/envoy.yaml.j2
 admin:
   address:
     socket_address:
-      address: 0.0.0.0
-      port_value: 9901 # Admin port
+      # Listen on localhost only for admin is safer with host networking
+      address: 127.0.0.1
+      port_value: 9901
 
 static_resources:
   listeners:
-  - name: listener_0
+  - name: listener_http_8888
     address:
       socket_address:
         address: 0.0.0.0
-        port_value: 8888 # Main listener port Nginx proxies to
+        port_value: 8888
     filter_chains:
     - filters:
       - name: envoy.filters.network.http_connection_manager
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          stat_prefix: ingress_http
+          stat_prefix: ingress_http_8888
+          use_remote_address: true
           http_filters:
           - name: envoy.filters.http.grpc_web
             typed_config:
@@ -31,66 +33,45 @@ static_resources:
           route_config:
             name: local_route
             virtual_hosts:
-            - name: local_service
+            - name: backend_service_routes
               domains: ["*"]
               routes:
               - match:
-                  prefix: "/"
-                  grpc: {}
+                  prefix: "/grewal.HomeGeneral/"
+                  headers:
+                  - name: "content-type"
+                    prefix_match: "application/grpc-web"
                 route:
-                  cluster: service_grpc # Route to the EDS-discovered backend cluster
+                  cluster: grewal_service_cluster
+                  timeout: 0s
+              # Fallback route for debugging
+              - match:
+                  prefix: "/"
+                route:
+                  cluster: grewal_service_cluster
                   timeout: 0s
 
   clusters:
-  # --- Cluster definition for Consul's xDS server ---
-  - name: consul_cluster # Name for the cluster pointing to Consul
+  - name: grewal_service_cluster
     connect_timeout: 1s
-    type: STRICT_DNS # Or STATIC if preferred and the IP is fixed
+    type: STRICT_DNS
     lb_policy: ROUND_ROBIN
-    # Upstream protocol MUST be HTTP/2 for gRPC
-    typed_extension_protocol_options:
-      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
-        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-        explicit_http_config:
-          http2_protocol_options: {}
+    dns_lookup_family: V4_ONLY
+    dns_resolvers:
+    - socket_address:
+        address: "10.128.0.22"
+        port_value: 8600
     load_assignment:
-      cluster_name: consul_cluster
+      cluster_name: grewal_service_cluster
       endpoints:
       - lb_endpoints:
         - endpoint:
             address:
               socket_address:
-                # Use the vaulted variable for the Consul host IP
-                address: "{{ consul_host_ip }}" # <-- Variable used here
-                # Target Consul's default gRPC xDS port
-                port_value: 8502
-
-  # --- Cluster definition for the backend service (discovered via EDS) ---
-  - name: service_grpc # Your backend service cluster
-    connect_timeout: 1s
-    type: EDS # Use Endpoint Discovery Service
-    lb_policy: ROUND_ROBIN # Load balancing policy
-    # EDS configuration
-    eds_cluster_config:
-      service_name: grewal-backend # Service name as registered in Consul
-      eds_config:
-        resource_api_version: V3
-        api_config_source:
-          api_type: GRPC
-          transport_api_version: V3
-          grpc_services:
-            - envoy_grpc:
-                cluster_name: consul_cluster # Point to the Consul cluster defined above
-          set_node_on_first_message_only: true
-
-    # Specify upstream uses HTTP/2 for gRPC
+                address: grewal.service.consul
+                port_value: 50051
     typed_extension_protocol_options:
       envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
         "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
         explicit_http_config:
           http2_protocol_options: {}
-
-# Node identifier required for EDS/xDS
-node:
- id: envoy-node-1
- cluster: grewalcc_proxy
