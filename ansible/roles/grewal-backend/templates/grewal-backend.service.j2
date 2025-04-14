@@ -1,8 +1,8 @@
 [Unit]
-# Added by Ansible test run
+# Removed consul.service dependency
 Description=Grewal Backend Service (Docker Container via Docker Hub)
-Requires=docker.service consul.service network-online.target
-After=docker.service consul.service network-online.target
+Requires=docker.service network-online.target
+After=docker.service network-online.target
 
 [Service]
 Restart=always
@@ -12,7 +12,7 @@ RestartSec=5s
 ExecStartPre=-/usr/bin/docker stop grewal-backend
 ExecStartPre=-/usr/bin/docker rm grewal-backend
 
-ExecStartPre=-/usr/bin/docker pull grewal/grewal:latest
+#ExecStartPre=-/usr/bin/docker pull grewal/grewal:latest
 
 # Run the container
 # Using --rm so systemd doesn't have to clean up stopped containers often
