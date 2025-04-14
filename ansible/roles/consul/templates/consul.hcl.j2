@@ -1,7 +1,7 @@
 # templates/consul.hcl.j2
 # Deployed by Ansible
 
-data_dir = "/consul/data" # Path inside the container
+data_dir = "/consul/data"
 
 # Non-dev server mode
 server = true
@@ -9,8 +9,8 @@ bootstrap_expect = 1
 
 # Host networking configuration - use the internal IP variable
 bind_addr = "{{ consul_host_ip }}"
-advertise_addr = "{{ consul_host_ip }}" # Explicitly set for host networking
-client_addr = "{{ consul_host_ip }}" # Listen on specific internal IP for API/DNS
+advertise_addr = "{{ consul_host_ip }}"
+client_addr = "{{ consul_host_ip }}"
 
 # Enable UI
 ui_config {
@@ -25,4 +25,4 @@ ports {
 # Note: HTTP API defaults to 8500
 
 log_level = "INFO"
-enable_syslog = true # Good practice for container logs
+# enable_syslog = true

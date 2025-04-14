@@ -13,7 +13,7 @@
     - consul  # Temporarily disabled for testing grewal-backend
 
     # Add the Envoy role after Consul
-    # - envoy   # Temporarily disabled for testing grewal-backend
+    - envoy   # Temporarily disabled for testing grewal-backend
 
     # Then configure the backend service
     - grewal-backend
