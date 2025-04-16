@@ -1,19 +1,46 @@
-# ~/src/gcc-gem-a/ansible/configure_vm.yml
+# ~/src/gcc-ansible-wsl/ansible/configure_vm.yml
 ---
 - name: Configure gcc-gem-a VM
   hosts: gcc-gem-a # Target the specific host from inventory.ini
   become: yes # Use sudo for tasks by default within this play
 
-  # Add this section to load vaulted variables globally
+  # Define variables directly or load them
+  # Ensure 'consul_bind_address' is defined here or in group/host vars
+  vars:
+    consul_bind_address: "10.128.0.22" # Make sure this is correct
+
+  # Load vaulted variables (and potentially non-vaulted ones too)
   vars_files:
     - vars/secrets.yml
 
   roles:
-    # Ensure Consul is configured and running first
-    - consul  # Temporarily disabled for testing grewal-backend
-
-    # Add the Envoy role after Consul
-    - envoy   # Temporarily disabled for testing grewal-backend
-
-    # Then configure the backend service
+    # Run roles in order
+    - consul
+    - envoy
     - grewal-backend
+
+  # ---- Handlers: Actions triggered by 'notify' ----
+  handlers:
+    # Handler for the grewal-backend role to reload consul config
+    - name: Reload Consul Configuration
+      listen: "Reload Consul Configuration"
+      ansible.builtin.command: "consul reload -http-addr={{ consul_bind_address }}:8500"
+      changed_when: true
+      become: yes
+
+    # Handler needed when systemd unit files change
+    - name: Reload systemd daemon
+      listen: "Reload systemd daemon"
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      become: yes
+
+    # Handler to restart the consul service
+    - name: Restart consul service
+      listen: "Restart consul service"
+      ansible.builtin.systemd:
+        name: consul.service
+        state: restarted
+      become: yes
+
+    # Add other handlers if needed (e.g., for envoy, grewal-backend restarts)

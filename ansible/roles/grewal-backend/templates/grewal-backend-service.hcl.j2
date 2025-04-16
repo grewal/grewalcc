@@ -1,0 +1,28 @@
+# templates/grewal-backend-service.hcl.j2
+# Deployed by Ansible - Defines the grewal-backend service for Consul
+
+service {
+  name = "grewal-backend" # Service name used for DNS: grewal-backend.service.consul
+  id   = "grewal-backend-{{ ansible_facts.hostname }}" # Unique ID for this service instance
+  tags = ["grpc", "backend"]
+
+  # Address Consul should use to reach the service.
+  # Since Consul runs with host networking on 10.128.0.22 and the backend
+  # is managed by systemd/Docker on the same host, Consul can reach it via this IP.
+  address = "{{ consul_host_ip }}" # Use the same bind address as Consul agent
+
+  # Port the backend service listens on
+  port = {{ grewal_backend_port }}
+
+  # Add a health check so Consul knows if the backend is responsive
+  check {
+    id       = "grewal-backend-tcp-check-{{ ansible_facts.hostname }}"
+    name     = "TCP port check for grewal-backend"
+    # Check if the backend port is listening on the host IP
+    tcp      = "{{ consul_bind_address }}:{{ grewal_backend_port }}"
+    interval = "15s" # How often to run the check
+    timeout  = "3s"  # How long to wait for a connection
+    # Optional: Automatically deregister the service if the check fails for this long
+    DeregisterCriticalServiceAfter = "1m" 
+  }
+}
