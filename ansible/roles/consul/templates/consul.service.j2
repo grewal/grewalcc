@@ -7,29 +7,18 @@ After=docker.service network-online.target
 Restart=always
 RestartSec=10s
 
-# Ensure Consul config directory exists on host (Ansible should handle this, but good belt-and-suspenders)
-ExecStartPre=-/bin/mkdir -p /etc/consul.d
-
-# Ensure Consul data directory exists on host and has correct permissions for container user (consul uid:100 gid:1000)
-ExecStartPre=-/bin/mkdir -p /opt/consul/data
-ExecStartPre=/bin/chown 100:1000 /opt/consul/data
-ExecStartPre=/bin/chmod 775 /opt/consul/data
-
 # Stop and remove any existing container with the same name first
 ExecStartPre=-/usr/bin/docker stop consul-server
 ExecStartPre=-/usr/bin/docker rm consul-server
 
-# Pull the latest specified image (optional, can be commented out if managed externally)
-# ExecStartPre=-/usr/bin/docker pull hashicorp/consul:1.20.5
-
 # Run the Consul server container
-# Use host networking as validated manually
-# Mount the config directory read-only
-# Mount the data directory read-write
+# Mount the config directory /etc/consul.d read-only.
+# Mount the host data directory /opt/consul/data read-write.
+# Use the config DIRECTORY argument.
 ExecStart=/usr/bin/docker run --rm --network host --name consul-server \
   -v /etc/consul.d:/etc/consul.d:ro \
   -v /opt/consul/data:/consul/data \
-  hashicorp/consul:1.20.5 agent -config-file=/etc/consul.d/consul.hcl
+  hashicorp/consul:1.20.5 agent -config-dir=/etc/consul.d
 
 # Stop the container gracefully
 ExecStop=/usr/bin/docker stop consul-server

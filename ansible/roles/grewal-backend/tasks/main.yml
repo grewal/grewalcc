@@ -1,15 +1,27 @@
 ---
 - name: Ensure grewal-backend systemd unit file is deployed
   ansible.builtin.template:
-    src: grewal-backend.service.j2 # Ansible automatically looks in the role's templates/ dir
+    src: grewal-backend.service.j2
     dest: /etc/systemd/system/grewal-backend.service
     owner: root
     group: root
     mode: '0644'
-  notify: Reload systemd and restart grewal-backend # This notifies handlers defined in the role or playbook
+  notify: Reload systemd and restart grewal-backend
+
+# roles/grewal-backend/tasks/main.yml (Add this task)
+# ... other tasks to setup/start grewal-backend ...
+
+- name: Place Consul service definition for grewal-backend
+  ansible.builtin.template:
+    src: grewal-backend-service.hcl.j2
+    dest: "/etc/consul.d/grewal-backend-service.hcl"
+    owner: root 
+    group: root
+    mode: '0644'
+  notify: Reload Consul Configuration
 
 - name: Ensure grewal-backend service is started and enabled
   ansible.builtin.systemd:
-    name: grewal-backend.service # The service name
-    state: started               # Ensure the service is running
-    enabled: yes                 # Ensure the service starts on boot
+    name: grewal-backend.service
+    state: started
+    enabled: yes

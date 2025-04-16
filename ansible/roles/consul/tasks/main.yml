@@ -5,48 +5,49 @@
   ansible.builtin.file:
     path: /etc/consul.d
     state: directory
-    owner: root
+    owner: root # Changed owner/group to root as it's system config
     group: root
     mode: '0755'
   become: yes
 
-# Note: The systemd unit file has ExecStartPre for data dir creation/permissions
-# as a fallback, but managing it here with Ansible is preferred for idempotency.
-- name: Ensure Consul data directory exists on host
+# Ensure the HOST data directory exists before mounting it into the container
+- name: Ensure Consul host data directory exists
   ansible.builtin.file:
-    path: /opt/consul/data
+    path: /opt/consul/data # Path on the HOST that gets mounted
     state: directory
-    # uid 100 / gid 1000 correspond to the 'consul' user inside the official container
-    owner: '100'
-    group: '1000'
-    mode: '0775'
+    owner: '100'  # consul user UID inside container
+    group: '1000' # consul user GID inside container
+    mode: '0750'  # Allow write for consul user/group
   become: yes
 
 - name: Deploy Consul HCL configuration file
   ansible.builtin.template:
     src: consul.hcl.j2
     dest: /etc/consul.d/consul.hcl
-    owner: root
+    owner: root # File owned by root
     group: root
-    mode: '0644'
+    mode: '0644' # Readable by others (like consul user in container)
   become: yes
-  notify: Reload systemd and restart consul # Restart consul if config changes
+  # If the main HCL config changes, we likely need to restart consul
+  notify: Restart consul service
 
 - name: Deploy Consul systemd unit file
   ansible.builtin.template:
-    src: consul.service.j2
+    src: consul.service.j2 # The file we fixed in Step 1
     dest: /etc/systemd/system/consul.service
     owner: root
     group: root
     mode: '0644'
   become: yes
-  notify: Reload systemd and restart consul # Restart consul if unit file changes
+  # If the systemd unit file itself changes, we MUST reload the daemon
+  # and then restart the service. Notify BOTH handlers.
+  notify:
+    - Reload systemd daemon
+    - Restart consul service
 
 - name: Ensure Consul service is started and enabled
   ansible.builtin.systemd:
-    name: consul.service # Use full name for clarity
+    name: consul.service
     state: started
     enabled: yes
-    # Explicitly reload daemon if unit file changed via handler
-    # daemon_reload: yes # Handled by the handler now
   become: yes
