@@ -1,0 +1,57 @@
+name: Terraform CI
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'terraform/**'
+  pull_request:
+    paths:
+      - 'terraform/**'
+
+# Allow the workflow to request an OpenID Connect token from GitHub for WIF.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  terraform:
+    name: 'Terraform Plan/Validate'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # Run subsequent commands in the terraform directory
+        working-directory: ./terraform
+
+    steps:
+    # Step 1: Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Step 2: Authenticate to Google Cloud using Workload Identity Federation
+    - name: Authenticate to Google Cloud
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: 'projects/62940940662/locations/global/workloadIdentityPools/gcc-github-pool/providers/github-provider'
+        service_account: 'gh-actions-terraform-runner@mysides.iam.gserviceaccount.com'
+
+    # Step 3: Setup Terraform CLI
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    # Step 4: Terraform Init
+    - name: Terraform Init
+      id: init
+      run: terraform init
+
+    # Step 5: Terraform Validate
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate
+
+    # Step 6: Terraform Plan
+    - name: Terraform Plan
+      id: plan
+      run: terraform plan -no-color
