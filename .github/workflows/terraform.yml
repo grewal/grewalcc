@@ -1,4 +1,4 @@
-name: Terraform CI
+name: 'Terraform CI/CD'
 
 on:
   push:
@@ -6,54 +6,131 @@ on:
       - master
     paths:
       - 'terraform/**'
-      - '.github/workflows/terraform.yml' # Trigger on changes to Terraform code OR this workflow file
+      - '.github/workflows/terraform.yml'
   pull_request:
+    branches:
+      - master
     paths:
       - 'terraform/**'
-      - '.github/workflows/terraform.yml' # Trigger on changes to Terraform code OR this workflow file
+      - '.github/workflows/terraform.yml'
 
-# Allow the workflow to request an OpenID Connect token from GitHub for WIF.
 permissions:
   contents: read
   id-token: write
+  # pull-requests: write # Optional: Uncomment later if you want to add plan comments to PRs
+  deployments: write # Required for environment approvals
 
 jobs:
-  terraform:
-    name: 'Terraform Plan/Validate'
+  terraform_plan:
+    name: 'Terraform Plan'
     runs-on: ubuntu-latest
+    outputs:
+      tf_plan_exitcode: ${{ steps.plan.outputs.exitcode }}
+
+    # Default working directory for all steps in this job
     defaults:
       run:
-        # Run subsequent commands in the terraform directory
         working-directory: ./terraform
 
     steps:
-    # Step 1: Checkout code
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # Step 2: Authenticate to Google Cloud using Workload Identity Federation
-    - name: Authenticate to Google Cloud
-      id: auth
-      uses: google-github-actions/auth@v2
-      with:
-        workload_identity_provider: 'projects/62940940662/locations/global/workloadIdentityPools/gcc-github-pool/providers/github-provider'
-        service_account: 'gh-actions-terraform-runner@mysides.iam.gserviceaccount.com'
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/62940940662/locations/global/workloadIdentityPools/gcc-github-pool/providers/github-provider'
+          service_account: 'gh-actions-terraform-runner@mysides.iam.gserviceaccount.com'
 
-    # Step 3: Setup Terraform CLI
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          # Pin to the exact Terraform version
+          terraform_version: 1.11.4
 
-    # Step 4: Terraform Init
-    - name: Terraform Init
-      id: init
-      run: terraform init
+      - name: Terraform Init
+        id: init
+        run: terraform init
+        continue-on-error: false
 
-    # Step 5: Terraform Validate
-    - name: Terraform Validate
-      id: validate
-      run: terraform validate
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+        continue-on-error: false
 
-    # Step 6: Terraform Plan
-    - name: Terraform Plan
-      id: plan
-      run: terraform plan -no-color
+      - name: Terraform Plan
+        id: plan
+        # Use detailed-exitcode to capture plan status (0=no changes, 1=error, 2=changes needed)
+        run: terraform plan -no-color -detailed-exitcode
+        # Continue even if exit code is 2 (changes detected)
+        continue-on-error: true
+
+      - name: Check Plan Exit Code
+        # Provides visibility in the logs which exit code occurred
+        run: |
+          echo "Plan exit code is: ${{ steps.plan.outputs.exitcode }}"
+          if [[ "${{ steps.plan.outputs.exitcode }}" == "1" ]]; then
+            echo "Error during Terraform Plan."
+            exit 1
+          elif [[ "${{ steps.plan.outputs.exitcode }}" == "2" ]]; then
+            echo "Terraform Plan detected changes."
+          else
+            echo "Terraform Plan detected no changes."
+          fi
+
+  terraform_apply:
+    name: 'Terraform Apply'
+    needs: terraform_plan
+    runs-on: ubuntu-latest
+
+    environment:
+      name: production
+      url: https://grewal.cc
+
+    # Default working directory for all steps in this job
+    defaults:
+      run:
+        working-directory: ./terraform
+
+    # Conditions to run this job:
+    # 1. It's a push event (not a PR)
+    # 2. The push is to the 'master' branch
+    # 3. The plan job finished successfully (exit code 0 or 2)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && (needs.terraform_plan.outputs.tf_plan_exitcode == 0 || needs.terraform_plan.outputs.tf_plan_exitcode == 2)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/62940940662/locations/global/workloadIdentityPools/gcc-github-pool/providers/github-provider'
+          service_account: 'gh-actions-terraform-runner@mysides.iam.gserviceaccount.com'
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          # Pin to the exact Terraform version
+          terraform_version: 1.11.4
+
+      - name: Terraform Init
+        # Run init again in the apply job to be safe, though state backend is configured
+        id: init
+        run: terraform init
+        continue-on-error: false
+
+      # Validate/Plan are implicitly covered by the 'needs' dependency and the if condition check.
+
+      - name: Terraform Apply
+        id: apply
+        # Only run apply if the plan had changes (exit code 2)
+        if: needs.terraform_plan.outputs.tf_plan_exitcode == 2
+        run: terraform apply -auto-approve -no-color
+        # Fail the job if apply itself errors
+        continue-on-error: false
+
+      - name: No Changes Apply Step
+        # If the plan had no changes (exit code 0), just output a message.
+        if: needs.terraform_plan.outputs.tf_plan_exitcode == 0
+        run: echo "Terraform plan indicated no changes needed. Skipping apply."
