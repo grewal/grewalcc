@@ -1,13 +1,22 @@
 # provider.tf
 
 terraform {
+  # Required provider configuration
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0" # Use a recent version of the GCP provider
+      version = "~> 5.0"
     }
   }
-  required_version = ">= 1.0" # Specify minimum Terraform version compatibility
+
+  # Minimum Terraform version compatibility
+  required_version = ">= 1.0"
+
+  # GCS Backend Configuration
+  backend "gcs" {
+    bucket = "gcc-terraform-state-bucket"
+    prefix = "terraform/state"
+  }
 }
 
 provider "google" {
