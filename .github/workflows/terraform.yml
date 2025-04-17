@@ -6,9 +6,11 @@ on:
       - master
     paths:
       - 'terraform/**'
+      - '.github/workflows/terraform.yml' # Trigger on changes to Terraform code OR this workflow file
   pull_request:
     paths:
       - 'terraform/**'
+      - '.github/workflows/terraform.yml' # Trigger on changes to Terraform code OR this workflow file
 
 # Allow the workflow to request an OpenID Connect token from GitHub for WIF.
 permissions:
