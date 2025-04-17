@@ -27,3 +27,9 @@ backups/
 # Ignore crash log files
 crash.log
 crash.*.log
+  
+# Terraform local state files (use remote backend)
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate # General pattern just in case
+*.tfstate.* # Catches backups too
