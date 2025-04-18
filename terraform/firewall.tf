@@ -7,6 +7,7 @@ resource "google_compute_firewall" "default_allow_http" {
   network     = "default" # Corresponds to the network URI in gcloud output
   direction   = "INGRESS"
   priority    = 1000
+  description = "Allow HTTP traffic from anywhere"
 
   allow {
     protocol = "tcp"
@@ -31,7 +32,7 @@ resource "google_compute_firewall" "default_allow_https" {
   }
 
   allow {
-    protocol = "udp" # Added for QUIC support as per gcloud output
+    protocol = "udp" # Added for QUIC support for HTTP 3
     ports    = ["443"]
   }
 
