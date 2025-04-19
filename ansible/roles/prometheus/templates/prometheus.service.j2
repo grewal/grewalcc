@@ -1,0 +1,36 @@
+[Unit]
+Description=Prometheus monitoring service running in Docker
+Requires=docker.service
+After=docker.service
+
+[Service]
+Restart=always
+RestartSec=10s
+
+# Clean up existing container
+ExecStartPre=-/usr/bin/docker stop prometheus
+ExecStartPre=-/usr/bin/docker rm prometheus
+# Pull latest image (optional, Ansible task also handles this)
+ExecStartPre=/usr/bin/docker pull prom/prometheus:v2.52.0
+
+# Run the container
+# Note: The Prometheus image runs as user 'nobody' internally by default.
+# We map host directories and expose the port.
+ExecStart=/usr/bin/docker run --name prometheus \
+  --net="host" \
+  --user nobody:nobody \
+  # -p 9090:9090 \
+  --volume="/etc/prometheus:/etc/prometheus:ro" \
+  --volume="/opt/prometheus/data:/prometheus" \
+  prom/prometheus:v2.52.0 \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/prometheus \
+  --web.console.libraries=/usr/share/prometheus/console_libraries \
+  --web.console.templates=/usr/share/prometheus/consoles \
+  --web.enable-lifecycle
+
+# Stop the container
+ExecStop=-/usr/bin/docker stop prometheus
+
+[Install]
+WantedBy=multi-user.target
