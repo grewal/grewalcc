@@ -1,0 +1,55 @@
+---
+# tasks file for prometheus role (ansible/roles/prometheus/tasks/main.yml)
+
+- name: Ensure Prometheus config directory exists
+  ansible.builtin.file:
+    path: /etc/prometheus
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: yes
+
+- name: Ensure Prometheus data directory exists
+  ansible.builtin.file:
+    path: /opt/prometheus/data
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: '0755'
+    recurse: yes # Ensure parent dirs (/opt/prometheus) are created if needed
+  become: yes
+
+- name: Pull Prometheus Docker image
+  community.docker.docker_image:
+    name: "prom/prometheus" # Official image name
+    tag: "v2.52.0" # Specify latest stable version (as of Apr 2025)
+    source: pull
+  become: yes
+
+- name: Deploy Prometheus configuration file
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml # Destination on the VM
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: Restart prometheus service
+
+- name: Deploy Prometheus systemd service file
+  ansible.builtin.template:
+    src: prometheus.service.j2 # systemd template file
+    dest: /etc/systemd/system/prometheus.service # Systemd service location
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: Reload systemd daemon # Notify systemd handler if file changes
+
+- name: Ensure Prometheus service is enabled and started
+  ansible.builtin.systemd:
+    name: prometheus.service
+    enabled: yes
+    state: started
+  become: yes
