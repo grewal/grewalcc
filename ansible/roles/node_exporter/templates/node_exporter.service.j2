@@ -1,0 +1,28 @@
+[Unit]
+Description=Node Exporter service running in Docker
+Requires=docker.service
+After=docker.service
+
+[Service]
+Restart=always
+RestartSec=10s
+
+# Clean up existing container
+ExecStartPre=-/usr/bin/docker stop node_exporter
+ExecStartPre=-/usr/bin/docker rm node_exporter
+# Pull latest image (optional, Ansible task also handles this)
+ExecStartPre=/usr/bin/docker pull quay.io/prometheus/node-exporter:v1.9.1
+
+# Run the container
+ExecStart=/usr/bin/docker run --name node_exporter \
+  --net="host" \
+  --pid="host" \
+  --volume="/:/host:ro,rslave" \
+  quay.io/prometheus/node-exporter:v1.9.1 \
+  --path.rootfs=/host
+
+# Stop the container
+ExecStop=-/usr/bin/docker stop node_exporter
+
+[Install]
+WantedBy=multi-user.target
