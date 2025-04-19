@@ -11,7 +11,8 @@
 
   roles:
     - node_exporter
-    - prometheus    # <-- Added this line
+    - prometheus
+    # - grafana # Removed - will run locally via SSH tunnel
     - consul
     - envoy
     - grewal-backend
@@ -47,3 +48,11 @@
         name: prometheus.service
         state: restarted
       become: yes
+
+    # Removed Grafana handler
+    # - name: Restart grafana service
+    #   listen: "Restart grafana service"
+    #   ansible.builtin.systemd:
+    #     name: grafana.service
+    #     state: restarted
+    #   become: yes
