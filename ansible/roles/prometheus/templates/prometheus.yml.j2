@@ -1,48 +1,27 @@
 # /etc/prometheus/prometheus.yml
-# Jinja2 template for Prometheus configuration (ansible/roles/prometheus/templates/prometheus.yml.j2)
+# Jinja2 template for Prometheus configuration
 
 global:
-  scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is 1 minute.
-  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is 1 minute.
-  # scrape_timeout is set to the global default (10s).
+  scrape_interval: 15s
+  evaluation_interval: 15s
 
-# Alertmanager configuration (We are not setting up Alertmanager yet)
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets:
-#           # - alertmanager:9093
-
-# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
-# rule_files:
-#   # - "first_rules.yml"
-#   # - "second_rules.yml"
-
-# A scrape configuration containing exactly one endpoint to scrape:
-# Here it's Prometheus itself.
 scrape_configs:
-  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
   - job_name: "prometheus"
-    # metrics_path defaults to '/metrics'
-    # scheme defaults to 'http'.
     static_configs:
-      - targets: ["127.0.0.1:9090"] # Use IPv4 loopback explicitly  <-- Changed
+      - targets: ["127.0.0.1:9090"]
 
-  # Job for Node Exporter
   - job_name: "node_exporter"
     static_configs:
-      - targets: ["127.0.0.1:9100"] # Use IPv4 loopback explicitly  <-- Changed (as you did)
+      - targets: ["127.0.0.1:9100"]
 
-  # Job for Consul (add this later if desired)
-  # - job_name: "consul"
-  #   metrics_path: /v1/agent/metrics
-  #   params:
-  #     format: ['prometheus']
-  #   static_configs:
-  #     - targets: ["{{ consul_bind_address }}:8500"] # Consul Agent API runs on 8500
+  - job_name: "consul"
+    metrics_path: /v1/agent/metrics # Required path for Consul agent metrics
+    params:
+      format: ['prometheus'] # Required param for Consul agent metrics
+    static_configs:
+      - targets: ["127.0.0.1:8500"] # Consul runs on host network
 
-  # Job for Envoy (add this later if desired)
-  # - job_name: "envoy"
-  #   metrics_path: /stats/prometheus # Envoy Prometheus endpoint
-  #   static_configs:
-  #     - targets: ["localhost:9901"] # Envoy admin interface usually on 9901
+  - job_name: "envoy"
+    metrics_path: /stats/prometheus # Required path for Envoy stats
+    static_configs:
+      - targets: ["127.0.0.1:9901"] # Envoy admin runs on host network
