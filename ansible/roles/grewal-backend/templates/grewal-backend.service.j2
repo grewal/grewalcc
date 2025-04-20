@@ -17,7 +17,7 @@ ExecStartPre=-/usr/bin/docker rm grewal-backend
 # Run the container
 # Using --rm so systemd doesn't have to clean up stopped containers often
 # Using host network as before
-ExecStart=/usr/bin/docker run --rm --network host --name grewal-backend grewal/grewal:latest
+ExecStart=/usr/bin/docker run --rm --network host --name grewal-backend grewal-backend:latest
 
 # Stop the container gracefully
 ExecStop=/usr/bin/docker stop grewal-backend
