@@ -26,3 +26,9 @@ ports {
 
 log_level = "INFO"
 # enable_syslog = true
+
+# Enable Prometheus Metrics Endpoint
+telemetry {
+  prometheus_retention_time = "24h"  # Required positive value to enable endpoint
+  disable_hostname = true            # Recommended when using Prometheus
+}
