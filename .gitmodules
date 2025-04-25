@@ -1,3 +1,6 @@
 [submodule "services/security-service/protos/envoy"]
 	path = services/security-service/protos/envoy
 	url = https://github.com/envoyproxy/envoy.git
+[submodule "services/security-service/protos/validate"]
+	path = services/security-service/protos/validate
+	url = https://github.com/envoyproxy/protoc-gen-validate.git
