@@ -67,6 +67,3 @@ CMakeUserPresets.json
 *.exe
 *.out
 *.app
-
-# Specific executables
-security-service
