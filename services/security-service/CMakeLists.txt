@@ -10,15 +10,21 @@ set(PROTO_INCLUDE_ROOTS
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/googleapis"
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/xds"
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/validate"
+    "${CMAKE_CURRENT_SOURCE_DIR}/protos/opencensus-proto/src" # Path for opencensus protos
+    "${CMAKE_CURRENT_SOURCE_DIR}/protos/opentelemetry-proto" # Path for OpenTelemetry protos
     # We will also need the Protobuf include directory from vcpkg later
 )
 
 # Find all .proto files within the source directories - Use explicit globs
+# NOTE: We still want to GLOB the entire envoy directory, even though the include root is /api
+# ALSO GLOB the new opencensus-proto directory
 file(GLOB_RECURSE ALL_PROTO_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/envoy/*.proto"
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/googleapis/*.proto"
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/xds/*.proto"
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/validate/*.proto"
+    "${CMAKE_CURRENT_SOURCE_DIR}/protos/opencensus-proto/src/*.proto" # Added glob for opencensus
+    "${CMAKE_CURRENT_SOURCE_DIR}/protos/opentelemetry-proto/*.proto" # Added glob for opentelemetry
 )
 list(LENGTH ALL_PROTO_FILES _num_proto_files)
 message(STATUS "Found ${_num_proto_files} total proto files using GLOB_RECURSE.")
@@ -46,25 +52,20 @@ message(STATUS "Protobuf include dir (from vcpkg): ${PROTOBUF_INCLUDE_DIR}")
 find_package(gRPC CONFIG REQUIRED)
 
 # Explicitly find the gRPC C++ plugin executable installed by vcpkg
-# It's often installed in the 'tools' directory relative to the package.
 find_program(gRPC_CPP_PLUGIN_EXECUTABLE_FOUND grpc_cpp_plugin
     HINTS "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/tools/grpc"
     NO_DEFAULT_PATH
 )
 if(NOT gRPC_CPP_PLUGIN_EXECUTABLE_FOUND)
-    # Try searching system paths as a fallback (less likely with vcpkg)
     find_program(gRPC_CPP_PLUGIN_EXECUTABLE_FOUND grpc_cpp_plugin)
 endif()
 
 if(NOT gRPC_CPP_PLUGIN_EXECUTABLE_FOUND)
     message(FATAL_ERROR "Could not find grpc_cpp_plugin executable. Check vcpkg installation.")
 else()
-    set(gRPC_CPP_PLUGIN_EXECUTABLE ${gRPC_CPP_PLUGIN_EXECUTABLE_FOUND}) # Set the variable correctly
+    set(gRPC_CPP_PLUGIN_EXECUTABLE ${gRPC_CPP_PLUGIN_EXECUTABLE_FOUND})
     message(STATUS "Found gRPC Plugin Executable: ${gRPC_CPP_PLUGIN_EXECUTABLE}")
 endif()
-
-# DEBUG: Check the gRPC plugin path (Original message kept for verification)
-# message(STATUS "gRPC Plugin Executable (from vcpkg find_package): ${gRPC_CPP_PLUGIN_EXECUTABLE}")
 
 
 # --- Proto Generation ---
@@ -79,9 +80,8 @@ message(STATUS "Protoc include args: ${PROTO_INCLUDE_ARGS}")
 # Prepare lists to hold unique generation targets
 set(PROTO_UNIQUE_OUTPUT_HEADERS "")
 set(PROTO_UNIQUE_OUTPUT_SOURCES "")
-# NEW Parallel lists:
 set(PROTO_FILES_TO_GENERATE "")     # Store the actual proto file paths
-set(PROTO_GEN_DIRS_FOR_FILES "")    # Store the corresponding generation directory (currently always PROTO_GEN_DIR)
+set(PROTO_GEN_DIRS_FOR_FILES "")    # Store the corresponding generation directory
 set(_processed_outputs "")          # Helper to track processed output files
 
 # Loop 1: Identify unique proto outputs to avoid duplicate rules
@@ -98,10 +98,9 @@ foreach(proto_file ${ALL_PROTO_FILES})
         endif()
     endforeach()
 
-    # Check handling for files directly in include roots (e.g., validate.proto)
+    # Check handling for files directly in include roots
     if(relative_path STREQUAL "")
         foreach(include_root ${PROTO_INCLUDE_ROOTS})
-             # Check if it's directly inside an include root dir
              get_filename_component(proto_dir ${proto_file} DIRECTORY)
              if("${proto_dir}" STREQUAL "${include_root}")
                   get_filename_component(relative_path ${proto_file} NAME)
@@ -156,10 +155,9 @@ if(_num_unique_protos GREATER 0)
           endif()
       endforeach()
 
-      # Add check for files directly in include roots (e.g., validate.proto)
+      # Add check for files directly in include roots
       if(relative_path STREQUAL "")
           foreach(include_root ${PROTO_INCLUDE_ROOTS})
-               # Check if it's directly inside an include root dir
                get_filename_component(proto_dir ${proto_file} DIRECTORY)
                if("${proto_dir}" STREQUAL "${include_root}")
                     get_filename_component(relative_path ${proto_file} NAME)
@@ -180,7 +178,6 @@ if(_num_unique_protos GREATER 0)
       set(grpc_cpp_out "${output_base}.grpc.pb.cc")
       set(grpc_h_out "${output_base}.grpc.pb.h")
 
-      # Use the explicitly found plugin path
       add_custom_command(
           OUTPUT ${cpp_out} ${h_out} ${grpc_cpp_out} ${grpc_h_out}
           COMMAND ${CMAKE_COMMAND} -E make_directory "${gen_dir}/${basename}/.."
@@ -188,7 +185,7 @@ if(_num_unique_protos GREATER 0)
               ${PROTO_INCLUDE_ARGS}
               --cpp_out=${gen_dir}
               --grpc_out=${gen_dir}
-              --plugin=protoc-gen-grpc=${gRPC_CPP_PLUGIN_EXECUTABLE} # Uses explicitly set variable
+              --plugin=protoc-gen-grpc=${gRPC_CPP_PLUGIN_EXECUTABLE}
               ${proto_file}
           DEPENDS ${proto_file} ${Protobuf_PROTOC_EXECUTABLE} ${gRPC_CPP_PLUGIN_EXECUTABLE}
           COMMENT "Generating C++ sources from ${proto_file}"
