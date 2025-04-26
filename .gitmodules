@@ -13,3 +13,6 @@
 [submodule "services/security-service/protos/opentelemetry-proto"]
 	path = services/security-service/protos/opentelemetry-proto
 	url = https://github.com/open-telemetry/opentelemetry-proto.git
+[submodule "services/security-service/protos/prometheus-metrics-model"]
+	path = services/security-service/protos/prometheus-metrics-model
+	url = https://github.com/prometheus/client_model.git
