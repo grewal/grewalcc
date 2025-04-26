@@ -10,3 +10,6 @@
 [submodule "services/security-service/protos/opencensus-proto"]
 	path = services/security-service/protos/opencensus-proto
 	url = https://github.com/census-instrumentation/opencensus-proto.git
+[submodule "services/security-service/protos/opentelemetry-proto"]
+	path = services/security-service/protos/opentelemetry-proto
+	url = https://github.com/open-telemetry/opentelemetry-proto.git
