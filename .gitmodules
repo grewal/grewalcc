@@ -7,3 +7,6 @@
 [submodule "services/security-service/protos/xds"]
 	path = services/security-service/protos/xds
 	url = https://github.com/cncf/xds.git
+[submodule "services/security-service/protos/opencensus-proto"]
+	path = services/security-service/protos/opencensus-proto
+	url = https://github.com/census-instrumentation/opencensus-proto.git
