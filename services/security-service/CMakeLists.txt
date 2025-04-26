@@ -12,12 +12,11 @@ set(PROTO_INCLUDE_ROOTS
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/validate"
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/opencensus-proto/src" # Path for opencensus protos
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/opentelemetry-proto" # Path for OpenTelemetry protos
+    "${CMAKE_CURRENT_SOURCE_DIR}/protos/prometheus-metrics-model" # Path for Prometheus model protos
     # We will also need the Protobuf include directory from vcpkg later
 )
 
 # Find all .proto files within the source directories - Use explicit globs
-# NOTE: We still want to GLOB the entire envoy directory, even though the include root is /api
-# ALSO GLOB the new opencensus-proto directory
 file(GLOB_RECURSE ALL_PROTO_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/envoy/*.proto"
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/googleapis/*.proto"
@@ -25,6 +24,7 @@ file(GLOB_RECURSE ALL_PROTO_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/validate/*.proto"
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/opencensus-proto/src/*.proto" # Added glob for opencensus
     "${CMAKE_CURRENT_SOURCE_DIR}/protos/opentelemetry-proto/*.proto" # Added glob for opentelemetry
+    "${CMAKE_CURRENT_SOURCE_DIR}/protos/prometheus-metrics-model/*.proto" # Added glob for prometheus
 )
 list(LENGTH ALL_PROTO_FILES _num_proto_files)
 message(STATUS "Found ${_num_proto_files} total proto files using GLOB_RECURSE.")
