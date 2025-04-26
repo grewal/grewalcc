@@ -16,3 +16,6 @@
 [submodule "services/security-service/protos/prometheus-metrics-model"]
 	path = services/security-service/protos/prometheus-metrics-model
 	url = https://github.com/prometheus/client_model.git
+[submodule "services/security-service/protos/cel-spec"]
+	path = services/security-service/protos/cel-spec
+	url = https://github.com/google/cel-spec.git
