@@ -1,177 +1,20 @@
-# --- Bazel requires this load statement ---
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-# --- Bazel Rulesets ---
-
-# rules_proto: Rules for building protocol buffers
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "rules_proto",
-    sha256 = "dc3fb206a2cb3441b485eb1e423165b231235a1ea9b031b4433cf7bc1fa460dd", # Verified 2025-04-27
-    strip_prefix = "rules_proto-5.3.0-21.7",
-    urls = ["https://github.com/bazelbuild/rules_proto/archive/refs/tags/5.3.0-21.7.tar.gz"],
-)
-
-# rules_proto_grpc: Rules for building gRPC code from protos
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "rules_proto_grpc",
-    sha256 = "2a0860a336ae836b54671cbbe0710eec17c64ef70c4c5a88ccfd47ea6e3739bd", # Verified 2025-04-27
-    strip_prefix = "rules_proto_grpc-4.6.0",
-    urls = ["https://github.com/rules-proto-grpc/rules_proto_grpc/releases/download/4.6.0/rules_proto_grpc-4.6.0.tar.gz"],
-)
-
-# --- Core C++ Libraries ---
-
-# Protobuf Runtime and Compiler
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "com_google_protobuf",
-    sha256 = "4fc5ff1b2c339fb86cd3a25f0b5311478ab081e65ad258c6789359cd84d421f8", # Verified 2025-04-27
-    strip_prefix = "protobuf-26.1",
-    urls = ["https://github.com/protocolbuffers/protobuf/releases/download/v26.1/protobuf-26.1.tar.gz"],
-)
-
-# Abseil C++ Common Libraries (Dependency for gRPC, Protobuf, etc.)
-# Version determined from Envoy v1.31.1 blueprint
+# Abseil (no Python dependencies)
 http_archive(
     name = "com_google_absl",
-    sha256 = "987ce98f02eefbaf930d6e38ab16aa05737234d7afbab2d5c4ea7adbe50c28ed", # Verified 2025-04-27
+    sha256 = "987ce98f02eefbaf930d6e38ab16aa05737234d7afbab2d5c4ea7adbe50c28ed",  # Verified
     strip_prefix = "abseil-cpp-20230802.1",
     urls = ["https://github.com/abseil/abseil-cpp/archive/20230802.1.tar.gz"],
 )
 
-# gRPC C++ Core and Code Generation Plugin
-# Version determined from Envoy v1.31.1 blueprint
+# Protobuf v21.7 (stable version with verified checksum)
 http_archive(
-    name = "com_github_grpc_grpc",
-    sha256 = "c9f9ae6e4d6f40464ee9958be4068087881ed6aa37e30d0e64d40ed7be39dd01", # Verified 2025-04-27
-    strip_prefix = "grpc-1.62.1",
-    urls = ["https://github.com/grpc/grpc/archive/v1.62.1.tar.gz"],
+    name = "com_google_protobuf",
+    sha256 = "75be42bd736f4df6d702a0e4e4d30de9ee40eac024c4b845d17ae4cc831fe4ae",  # Verified
+    strip_prefix = "protobuf-21.7",
+    urls = ["https://github.com/protocolbuffers/protobuf/archive/v21.7.tar.gz"],
 )
 
-# --- Load necessary dependencies for gRPC ---
-load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
-grpc_deps()
-
-# --- Load necessary dependencies for Protobuf ---
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
 protobuf_deps()
-
-# --- Transitive C/C++ Libraries (often needed by gRPC, Protobuf, etc.) ---
-
-# c-ares (DNS resolution library used by gRPC)
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "com_github_cares_cares",
-    # sha256 = "718d4d9188e70e7f5c2d0c491490e117057622c7417f8d34d8b845b7f054cb3f", # Old SHA
-    sha256 = "12db8d5d86c5117a7eca3d8f55090d42b01fc9b1bce08f6862d77df96ab21f54", # Verified 2025-04-27
-    strip_prefix = "c-ares-cares-1_20_1",
-    urls = ["https://github.com/c-ares/c-ares/archive/refs/tags/cares-1_20_1.tar.gz"],
-)
-
-# RE2 (Regular expression library, sometimes used by dependencies)
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "com_googlesource_code_re2",
-    # sha256 = "9e60f137adac915698f66c8e6f4f848d6edc170d9d6a192d9c87d1db398d817f", # Old SHA
-    sha256 = "4e6593ac3c71de1c0f322735bc8b0492a72f66ffccfad76e259fa21c41d27d8a", # Verified 2025-04-27
-    strip_prefix = "re2-2023-11-01",
-    urls = ["https://github.com/google/re2/archive/refs/tags/2023-11-01.tar.gz"],
-)
-
-# zlib (Compression library, widely used)
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "zlib",
-    # sha256 = "8a9f44eaa9409a96b1b1f21682089d670212f513b760e8af53f4edf7710f1a40", # Old SHA
-    sha256 = "1525952a0a567581792613a9723333d7f8cc20b87a81f920fb8bc7e3f2251428", # Verified 2025-04-27
-    strip_prefix = "zlib-1.2.13",
-    urls = ["https://github.com/madler/zlib/archive/refs/tags/v1.2.13.tar.gz"],
-    build_file = "@com_github_grpc_grpc//bazel:zlib.BUILD",
-)
-
-
-# --- Proto Source Dependencies (Used by Envoy API) ---
-
-# googleapis (Google API definitions, including types used by Envoy)
-# CRITICAL: Using the specific commit identified from Envoy v1.31.1 build
-http_archive(
-    name = "com_google_googleapis",
-    # Using commit-specific SHA from blueprint - assumed correct unless sync fails
-    sha256 = "e76f50a2e5c5927058eb9e6f4257144a9506c7c022187d0c9c57c3c03eca6b2c",
-    strip_prefix = "googleapis-114a745b989e90a535b01e6608a6d2a3b0f6b208",
-    urls = ["https://github.com/googleapis/googleapis/archive/114a745b989e90a535b01e6608a6d2a3b0f6b208.tar.gz"],
-)
-
-# xds (Envoy xDS API definitions - udpa, etc.)
-# Using the specific commit identified from Envoy v1.31.1 build
-http_archive(
-    name = "com_github_cncf_xds",
-    # Using commit-specific SHA from blueprint - assumed correct unless sync fails
-    sha256 = "f4a3ae47350d6786c5765716976e7e0c7afe0348ba258721d48055d86d959c57",
-    strip_prefix = "xds-555b57ec0b739066cb7d834a3e96393773251605",
-    urls = ["https://github.com/cncf/xds/archive/555b57ec0b739066cb7d834a3e96393773251605.tar.gz"],
-)
-
-# protoc-gen-validate (PGV - Used for message validation constraints in protos)
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "com_github_envoyproxy_protoc_gen_validate",
-    # sha256 = "1fbe281e6317378be40e01178509ac6c8703a9b8ff8a7779e5f53e34f778acb0", # Old SHA
-    sha256 = "92e29c2150675ce954c965bcaa559ca944704b75711533cfe03ce541dcf5a1dd", # Verified 2025-04-27
-    strip_prefix = "protoc-gen-validate-1.0.4",
-    urls = ["https://github.com/envoyproxy/protoc-gen-validate/archive/refs/tags/v1.0.4.tar.gz"],
-)
-
-# opencensus-proto (Dependency for some telemetry protos)
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "com_github_census_instrumentation_opencensus_proto",
-    # sha256 = "936a27f1c986317e7790a885a36d1b3ae82453709a277d4a9a8a38b8b6bb2396", # Old SHA
-    sha256 = "e3d89f7f9ed84c9b6eee818c2e9306950519402bf803698b15c310b77ca2f0f3", # Verified 2025-04-27
-    strip_prefix = "opencensus-proto-0.4.1",
-    urls = ["https://github.com/census-instrumentation/opencensus-proto/archive/refs/tags/v0.4.1.tar.gz"],
-)
-
-# opentelemetry-proto (Dependency for some telemetry protos)
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "com_github_open_telemetry_opentelemetry_proto",
-    # sha256 = "b56b3da549744418a0a4af023a35f1b431ed14d403fd48b107c6c3e13f09a2f6", # Old SHA
-    sha256 = "bed250ceec8e4a83aa5604d7d5595a61945059dc662edd058a9da082283f7a00", # Verified 2025-04-27
-    strip_prefix = "opentelemetry-proto-1.3.1",
-    urls = ["https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.3.1.tar.gz"],
-)
-
-# prometheus-client-model (Proto definitions for Prometheus metrics exposition)
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "io_prometheus_client_model",
-    # sha256 = "a76a8d0089672d021b081576f8b3f1ce9b5c143f5e3e240d760345e50f1997d9", # Old SHA
-    sha256 = "b9b690bc35d80061f255faa7df7621eae39fe157179ccd78ff6409c3b004f05e", # Verified 2025-04-27
-    strip_prefix = "client_model-0.6.1",
-    urls = ["https://github.com/prometheus/client_model/archive/refs/tags/v0.6.1.tar.gz"],
-)
-
-# cel-spec (Common Expression Language - Used by Envoy for matching/routing)
-# Version determined from Envoy v1.31.1 blueprint
-http_archive(
-    name = "dev_cel_spec_cel_spec", # Name can vary, this matches Envoy's pattern
-    # sha256 = "08a556a9067c3e1ab6700705d3ccb7f5b8e03d9f9059a1da8d407045a5b6d607", # Old SHA
-    sha256 = "3ee09eb69dbe77722e9dee23dc48dc2cd9f765869fcf5ffb1226587c81791a0b", # Verified 2025-04-27
-    strip_prefix = "cel-spec-0.15.0",
-    urls = ["https://github.com/google/cel-spec/archive/refs/tags/v0.15.0.tar.gz"],
-)
-
-
-# --- Envoy Source Code (To access API proto files like ext_authz.proto) ---
-# We need the Envoy source primarily for its 'api/' directory containing .proto files.
-# Using the exact tag v1.31.1
-http_archive(
-    name = "envoy",
-    # sha256 = "560800a39a923f032ad945389b46039c7e71f2d1949b333a83a678f14ab5509f", # Old SHA
-    sha256 = "1fc6b1b0b4abaccc5d517ffb6284b2b066cd548bb49e7e241b97c92dcbd53a30", # Verified 2025-04-27
-    strip_prefix = "envoy-1.31.1",
-    urls = ["https://github.com/envoyproxy/envoy/archive/refs/tags/v1.31.1.tar.gz"],
-)
