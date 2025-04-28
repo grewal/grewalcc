@@ -1,0 +1,25 @@
+# --- START OF FILE services/security-service/BUILD.bazel ---
+
+# Declare the C++ binary target
+cc_binary(
+    name = "security_service",
+    # Use glob to find source and header files automatically
+    srcs = glob([
+        "src/**/*.cc",  # Find all .cc files in src/ and its subdirectories
+        "src/**/*.h",   # Find all .h files in src/ and its subdirectories
+    ]),
+    # Define include paths relative to the workspace root (or this package)
+    copts = [
+        "-I.", # Allows #include "src/..."
+    ],
+    # Link against Abseil base to test linking
+    deps = [
+       "@com_google_absl//absl/base",
+       # Placeholders for later:
+       # "@com_google_protobuf//:protobuf",
+       # "@com_github_grpc_grpc//:grpc++",
+       # "//:proto_lib", # Placeholder for our generated code library
+    ],
+)
+
+# --- END OF FILE services/security-service/BUILD.bazel ---
