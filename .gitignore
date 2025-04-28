@@ -15,6 +15,11 @@ backups/
 *.grpc.pb.h
 *.grpc.pb.cc
       
+# Bazel output files
+/bazel-*
+/MODULE.bazel
+/MODULE.bazel.lock
+
 # Terraform specific ignores
 # --------------------------
 # Ignore state files (contain sensitive info)
