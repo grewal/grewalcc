@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"    // Added for mutex
 	"syscall"
 	"time"
 
@@ -16,6 +17,24 @@ import (
 
 // Global variable for the Consul client
 var consulClient *consulapi.Client
+
+// --- Configuration Storage ---
+var (
+	// Mutex protects access to the configuration maps
+	configMutex sync.RWMutex
+	// ipBlocklist stores blocked IP addresses
+	(key: IP string, value: empty struct for set-like behavior)
+	ipBlocklist map[string]struct{}
+	// TODO: Add uaBlocklist map
+)
+
+// Initialize the maps
+func init() {
+	ipBlocklist = make(map[string]struct{})
+	// TODO: Initialize uaBlocklist
+}
+
+// --- End Configuration Storage ---
 
 // handleAuthzRequest is the placeholder for Envoy ext_authz checks
 func handleAuthzRequest(logger *slog.Logger) http.HandlerFunc {
@@ -28,9 +47,31 @@ func handleAuthzRequest(logger *slog.Logger) http.HandlerFunc {
 		)
 		requestLogger.Info("Received authz request")
 
+		// --- Placeholder Logic ---
 		// TODO: Implement actual checks (IP, UA, Rate Limit) using Consul/Redis
+
+		// --- Example: Read IP Blocklist (Read Lock) ---
+		// clientIP := r.Header.Get("X-Forwarded-For") // Need to parse this properly later
+		// if clientIP != "" {
+		//    configMutex.RLock() // Acquire Read Lock
+		//    _, blocked := ipBlocklist[clientIP]
+		//    configMutex.RUnlock() // Release Read Lock
+		//
+		//    if blocked {
+		//        requestLogger.Warn("Request denied", "reason", "ip_blocklist", "client_ip", clientIP)
+		//        w.Header().Set("X-Authz-Decision", "Deny-IPBlock")
+		//        w.WriteHeader(http.StatusForbidden)
+		// 	    fmt.Fprintf(w, "Denied: IP Blocked") // Example body
+		//        return // Stop processing
+		//    }
+		// }
+		// --- End Example ---
+
+
 		decision := "Allow-Placeholder"
 		statusCode := http.StatusOK
+		// --- End Placeholder Logic ---
+
 		w.Header().Set("X-Authz-Decision", decision)
 		w.WriteHeader(statusCode)
 	}
@@ -43,39 +84,32 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Default().Error("Consul agent health check failed in /healthz", "error", err)
 		}
-		// If err is nil, Consul check passed, proceed to return OK
 	} else {
-		// Log a warning if the health check is called before the client is ready
 		slog.Default().Warn("/healthz called before Consul client was initialized")
-		// Still return OK for basic liveness
 	}
-
-	// Always return OK status for liveness regardless of Consul state (as per current logic)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintln(w, "OK")
 }
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	// Set as default logger for convenience in places like handleHealthz
 	slog.SetDefault(logger)
 
 	logger.Info("Starting Grewal Security Service")
 
 	listenAddr := os.Getenv("LISTEN_ADDR")
 	if listenAddr == "" {
-		listenAddr = ":9001" // Server port address
+		listenAddr = ":9001"
 	}
 	logger.Info("Configuration loaded", "listen_address", listenAddr)
 
 	// --- Configure Consul Client ---
 	var err error
 	consulConfig := consulapi.DefaultConfig()
-	// Allow overriding via environment variable if needed (CONSUL_HTTP_ADDR)
 	if consulAddr := os.Getenv("CONSUL_HTTP_ADDR"); consulAddr != "" {
 		consulConfig.Address = consulAddr
 	} else {
-		consulConfig.Address = "127.0.0.1:8500" // Default Consul agent address
+		consulConfig.Address = "127.0.0.1:8500"
 	}
 
 	consulClient, err = consulapi.NewClient(consulConfig)
@@ -92,9 +126,11 @@ func main() {
 	}
 	// --- End Consul Client Config ---
 
+	// TODO: Start background goroutine here to poll Consul KV and update maps
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealthz)
-	mux.HandleFunc("/", handleAuthzRequest(logger)) // Root handles authz requests
+	mux.HandleFunc("/", handleAuthzRequest(logger))
 
 	server := &http.Server{
 		Addr:         listenAddr,
@@ -118,6 +154,8 @@ func main() {
 		}
 	}()
 
+	logger.Info("Server running. Waiting for signal or error...")
+
 	select {
 	case err := <-serverErrChan:
 		if err != nil {
@@ -130,22 +168,20 @@ func main() {
 	case sig := <-shutdownChan:
 		logger.Info("Shutdown signal received", "signal", sig.String())
 
+		// TODO: Signal background goroutine to stop polling Consul
+
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer shutdownCancel()
 
-		// Attempt graceful shutdown
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			logger.Error("Graceful server shutdown failed", "error", err)
-			// Force close if shutdown fails
 			if closeErr := server.Close(); closeErr != nil {
 				logger.Error("Server Close failed after shutdown error", "error", closeErr)
 			}
 		} else {
 			logger.Info("Server shutdown gracefully.")
 		}
-
-		<-serverErrChan
-		logger.Info("Server goroutine finished.")
 	}
+
 	logger.Info("Grewal Security Service shutting down.")
 }
