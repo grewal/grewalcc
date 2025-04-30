@@ -2,10 +2,13 @@ name: Deploy Configuration via Ansible
 
 on:
   push:
-    branches: [ master ] # Or main, depending on your default branch
+    branches:
+      - master
+      - envoy-security-service-dev
     paths:
       - 'ansible/**'
-      - '.github/workflows/deploy-ansible-config.yaml' # Trigger if workflow itself changes
+      - '.github/workflows/deploy-ansible-config.yaml'
+      - 'services/security-service/go/**'
   workflow_dispatch: # Allows manual triggering
 
 jobs:
@@ -20,45 +23,37 @@ jobs:
     - name: Set up SSH Agent
       uses: webfactory/ssh-agent@v0.9.0
       with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} # Use the secret containing your VM's private key
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-    - name: Add SSH known hosts # Avoid prompt for adding host key
+    - name: Add SSH known hosts
       run: |
         mkdir -p ~/.ssh
         ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
         chmod 600 ~/.ssh/known_hosts
       env:
-        DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }} # Use the secret for your VM's IP/hostname
+        DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
 
     - name: Install Ansible
       run: |
         sudo apt-get update && sudo apt-get install ansible -y
 
-    # --- MODIFIED STEP ---
     - name: Test Vault Decryption in CI
       env:
-        # Keep the env var for potential other uses or just clarity, though not strictly needed for the command now
         ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
       run: |
         echo "Attempting to view vaulted file using --vault-password-file..."
-        # Use process substitution to pass the password via a file descriptor
         ansible-vault view --vault-password-file <(echo "$ANSIBLE_VAULT_PASSWORD") ansible/vars/secrets.yml
         echo "Vault view command finished."
-      # Continue-on-error is false by default, so if this fails, the workflow stops.
-    # --- END MODIFIED STEP ---
 
-    # --- MODIFIED STEP ---
     - name: Run ansible-playbook
       env:
-        # Keep env var, might be needed if some module internally relies on it (unlikely but safe)
         ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
-        ANSIBLE_HOST_KEY_CHECKING: false # Alternative/belt-and-suspenders for known_hosts
-        SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }} # Make sure ssh-agent socket is available
-        SSH_AGENT_PID: ${{ env.SSH_AGENT_PID }} # Make sure ssh-agent pid is available
+        ANSIBLE_HOST_KEY_CHECKING: false
+        SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }}
+        SSH_AGENT_PID: ${{ env.SSH_AGENT_PID }}
       run: |
         echo "Running playbook with explicit vault password file..."
         ansible-playbook \
           -i ansible/inventory.ini \
           --vault-password-file <(echo "$ANSIBLE_VAULT_PASSWORD") \
           ansible/configure_vm.yml
-    # --- END MODIFIED STEP ---
