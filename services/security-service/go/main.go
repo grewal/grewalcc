@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync" // Import the sync package
 	"syscall"
 	"time"
 
@@ -27,12 +28,45 @@ func handleHealthz(client *consulapi.Client) http.HandlerFunc {
 			_, err := client.Agent().NodeName()
 			if err != nil {
 				slog.Default().Error("Consul agent health check failed in /healthz", "error", err)
+				// Optionally return 503 if Consul connection is critical for health
+				// w.WriteHeader(http.StatusServiceUnavailable)
+				// return
 			}
 		} else {
 			slog.Default().Warn("/healthz check performed before Consul client was initialized")
 		}
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "OK")
+	}
+}
+
+// pollConsulKV periodically fetches configuration from Consul KV.
+// It takes the authz service, logger, waitgroup, and quit channel.
+func pollConsulKV(app *authz.Service, logger *slog.Logger, wg *sync.WaitGroup, quit chan struct{}) {
+	defer wg.Done() // Signal that this goroutine has finished when it returns
+
+	// Define the polling interval
+	pollInterval := 60 * time.Second
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop() // Ensure the ticker is stopped when the function exits
+
+	logger.Info("Starting Consul KV poller", "interval", pollInterval)
+
+	for {
+		select {
+		case <-ticker.C:
+			logger.Debug("Polling Consul KV for IP blocklist updates...")
+			if err := app.FetchAndUpdateIPBlocklist(); err != nil {
+				// Log the error but continue polling
+				logger.Error("Error polling Consul KV for IP blocklist", "error", err)
+			} else {
+				logger.Debug("Successfully polled and updated IP blocklist from Consul KV")
+			}
+
+		case <-quit:
+			logger.Info("Stopping Consul KV poller.")
+			return
+		}
 	}
 }
 
@@ -84,11 +118,19 @@ func main() {
 	// Call the exported method on the authz service instance to load initial rules.
 	if err := app.FetchAndUpdateIPBlocklist(); err != nil {
 		logger.Error("Initial IP blocklist fetch failed", "error", err)
-		// Decide policy: exit or continue?
+		// Decide policy: exit or continue? For now, continue.
 		// os.Exit(1)
+	} else {
+		logger.Info("Successfully fetched initial IP blocklist from Consul KV")
 	}
-	// TODO: Add initial fetch for UA blocklist using exported app method.
-	// TODO: Start background goroutine here for periodic Consul polling using exported app method.
+
+	// --- Start Background Tasks ---
+	var wg sync.WaitGroup       // WaitGroup to manage background goroutines
+	quit := make(chan struct{}) // Channel to signal shutdown to background tasks
+
+	wg.Add(1) // Increment WaitGroup counter for the polling goroutine
+	go pollConsulKV(app, logger, &wg, quit)
+	// --- End Background Tasks Start ---
 
 	// --- Setup HTTP Server and Routes ---
 	mux := http.NewServeMux()
@@ -124,30 +166,64 @@ func main() {
 	case err := <-serverErrChan:
 		if err != nil {
 			logger.Error("Server failed to start or stopped unexpectedly", "error", err)
+			// If server fails, signal background tasks to stop too
+			close(quit)
+			// Optionally wait for background tasks even on server error, though unlikely to succeed
+			// wg.Wait()
 			os.Exit(1)
 		} else {
 			logger.Info("Server stopped gracefully (likely via shutdown completion).")
+			// Server stopped cleanly, but we still need to ensure background tasks stop if quit wasn't closed
+			close(quit) // Ensure quit is closed if shutdown wasn't triggered by signal
+			wg.Wait()   // Wait for background tasks to finish
 		}
 
 	case sig := <-shutdownChan:
 		logger.Info("Shutdown signal received", "signal", sig.String())
 
-		// TODO: Implement graceful shutdown for background tasks.
+		// --- Start Graceful Shutdown Sequence ---
+		logger.Info("Initiating graceful shutdown...")
 
+		// 1. Signal background tasks to stop
+		logger.Debug("Signaling background tasks to stop...")
+		close(quit) // Close the quit channel
+
+		// 2. Wait for background tasks to finish
+		logger.Debug("Waiting for background tasks to complete...")
+		// Setup a timeout for waiting on background tasks
+		waitTimeout := 20 * time.Second // Slightly less than server shutdown timeout
+		waitChan := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(waitChan)
+		}()
+
+		select {
+		case <-waitChan:
+			logger.Info("All background tasks completed.")
+		case <-time.After(waitTimeout):
+			logger.Warn("Timeout waiting for background tasks to complete.")
+		}
+
+		// 3. Shutdown HTTP server
+		logger.Debug("Shutting down HTTP server...")
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer shutdownCancel()
 
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			logger.Error("Graceful server shutdown failed", "error", err)
+			// Force close if shutdown fails
 			if closeErr := server.Close(); closeErr != nil {
 				logger.Error("Server Close failed after shutdown error", "error", closeErr)
 			}
 		} else {
-			logger.Info("Server shutdown gracefully.")
+			logger.Info("HTTP server shutdown gracefully.")
 		}
 
+		// 4. Wait for server goroutine to finish (optional, but good practice)
 		<-serverErrChan
-		logger.Info("Server goroutine finished.")
+		logger.Debug("Server goroutine finished.")
+		// --- End Graceful Shutdown Sequence ---
 	}
 
 	logger.Info("Grewal Security Service finished.")
