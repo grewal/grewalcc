@@ -1,0 +1,64 @@
+# Location: .github/workflows/authz-test.yml
+name: Authz Service Go Tests
+
+# Controls when the workflow will run
+on:
+  push:
+    branches:
+      - master
+      - envoy-security-service-dev # Trigger on pushes to this dev branch too
+    paths:
+      - 'services/security-service/go/**' # Run if Go code changes
+      - '.github/workflows/authz-test.yml' # Run if this workflow file changes
+  pull_request:
+    branches:
+      - master # Run on PRs targeting master
+    paths:
+      - 'services/security-service/go/**'
+      - '.github/workflows/authz-test.yml'
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This job runs the Go unit tests
+  test-authz:
+    name: Run Go Unit Tests (authz)
+    runs-on: ubuntu-latest # Use the latest GitHub-hosted Linux runner
+
+    steps:
+      # Step 1: Check out the repository code under $GITHUB_WORKSPACE
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up the Go environment
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Specify the Go version matching your go.mod/development environment
+          # Update this if you change Go versions
+          go-version: '1.22'
+          # Optional: Enable caching Go module dependencies for faster subsequent runs
+          cache: true
+
+      # Step 3: Run tests
+      # We need to change directory to where the Go module root is defined
+      - name: Run Go Tests
+        working-directory: ./services/security-service/go # Execute command from this directory
+        run: go test -v ./... # -v for verbose output, ./... runs tests in current dir and subdirs
+
+      # Optional Step 4: Check Go code formatting (Good Practice)
+      # - name: Check formatting
+      #   working-directory: ./services/security-service/go
+      #   run: |
+      #     # gofmt returns non-zero exit code if files need formatting
+      #     gofmt_output=$(gofmt -l .)
+      #     if [ -n "$gofmt_output" ]; then
+      #       echo "Go files need formatting:"
+      #       echo "$gofmt_output"
+      #       exit 1
+      #     fi
+      #     echo "Go formatting is correct."
+
+      # Optional Step 5: Run Go vet (Static analysis)
+      # - name: Run Go vet
+      #   working-directory: ./services/security-service/go
+      #   run: go vet ./...
