@@ -8,6 +8,8 @@ service {
   # Optional: Add tags for filtering/discovery
   # tags = ["ext_authz", "security", "go"]
 
+  # Removed incorrect key from here: deregister_critical_after = "1m"
+
   # Use a simple HTTP health check against the /healthz endpoint
   check {
     id       = "authz-service-health-check"
@@ -17,9 +19,11 @@ service {
     interval = "10s" // Check every 10 seconds
     timeout  = "2s"  // Timeout after 2 seconds
 
-    // Mark critical after 3 failures, deregister after 1 minute critical
+    # Mark critical after 3 failures
     failures_before_critical = 3
-    deregister_critical_after = "1m" // Correct HCL syntax
+
+    # Deregister after 1 minute critical (Correct key name and placement)
+    DeregisterCriticalServiceAfter = "1m" # <<< CORRECTED LINE
   }
 
   // Optional: Meta data if needed later

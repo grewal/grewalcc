@@ -7,6 +7,15 @@ data_dir = "/consul/data"
 server = true
 bootstrap_expect = 1
 
+# --- Increase Rate Limits (Temporary Diagnostic) ---
+limits {
+  http_max_conns_per_client = 400 # Default 200
+  rpc_rate = 400                  # Default 200
+  rpc_max_burst = 800             # Default 400
+}
+# ----------------------------------------------------
+
+
 # Host networking configuration - use the internal IP variable
 bind_addr = "{{ consul_host_ip }}"
 advertise_addr = "{{ consul_host_ip }}"
