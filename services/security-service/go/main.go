@@ -46,6 +46,7 @@ func pollConsulKV(app *authz.Service, logger *slog.Logger, wg *sync.WaitGroup, q
 	defer wg.Done() // Signal that this goroutine has finished when it returns
 
 	// Define the polling interval
+	// TODO: Make this configurable via environment variable
 	pollInterval := 60 * time.Second
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop() // Ensure the ticker is stopped when the function exits
@@ -63,9 +64,17 @@ func pollConsulKV(app *authz.Service, logger *slog.Logger, wg *sync.WaitGroup, q
 				logger.Debug("Successfully polled and updated IP blocklist from Consul KV")
 			}
 
+			// Add polling for UA blocklist here as well
+			logger.Debug("Polling Consul KV for User-Agent blocklist updates...")
+			if err := app.FetchAndUpdateUABlocklist(); err != nil {
+				logger.Error("Error polling Consul KV for User-Agent blocklist", "error", err)
+			} else {
+				logger.Debug("Successfully polled and updated User-Agent blocklist from Consul KV")
+			}
+
 		case <-quit:
 			logger.Info("Stopping Consul KV poller.")
-			return
+			return // Exit the goroutine
 		}
 	}
 }
@@ -122,6 +131,13 @@ func main() {
 		// os.Exit(1)
 	} else {
 		logger.Info("Successfully fetched initial IP blocklist from Consul KV")
+	}
+	// Add initial fetch for UA blocklist using exported app method.
+	if err := app.FetchAndUpdateUABlocklist(); err != nil {
+		logger.Error("Initial User-Agent blocklist fetch failed", "error", err)
+		// Continue even if this fails initially
+	} else {
+		logger.Info("Successfully fetched initial User-Agent blocklist from Consul KV")
 	}
 
 	// --- Start Background Tasks ---
@@ -220,7 +236,6 @@ func main() {
 			logger.Info("HTTP server shutdown gracefully.")
 		}
 
-		// 4. Wait for server goroutine to finish (optional, but good practice)
 		<-serverErrChan
 		logger.Debug("Server goroutine finished.")
 		// --- End Graceful Shutdown Sequence ---

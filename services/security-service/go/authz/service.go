@@ -1,7 +1,6 @@
-package authz // Defines the package for authorization logic
+package authz
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,137 +10,178 @@ import (
 	consulapi "github.com/hashicorp/consul/api"
 )
 
-// --- Constants (Specific to Authz) ---
 const (
-	// ipBlocklistKey defines the Consul KV path for the IP blocklist.
-	ipBlocklistKey = "config/security/ip_blocklist"
-	// TODO: Add uaBlocklistKey constant later
+	ipBlocklistKVKey = "config/security/ip_blocklist"
+	uaBlocklistKVKey = "config/security/ua_blocklist"
 )
 
-// --- Consul KV Interface ---
-
-// consulKV abstracts the Consul KV interaction needed by the service.
+// consulKV defines the interface we need from the Consul KV client.
+// This allows for easier testing by mocking.
 type consulKV interface {
 	Get(key string, q *consulapi.QueryOptions) (*consulapi.KVPair, *consulapi.QueryMeta, error)
+	// Put(p *consulapi.KVPair, q *consulapi.WriteOptions) (*consulapi.WriteMeta, error)
 }
 
-// --- Application Service Struct ---
-
-// Service holds the application state and dependencies for the authorization service.
-// Exported (uppercase 'S') so it can be instantiated in the main package.
+// Service holds the core application logic and dependencies.
 type Service struct {
-	logger      *slog.Logger
-	kv          consulKV          // Holds an implementation of the consulKV interface (real or mock).
-	configMutex sync.RWMutex      // Protects concurrent read/write access to configuration maps.
-	ipBlocklist map[string]struct{}
-	// TODO: Add uaBlocklist map here later
-	// TODO: Add Redis client interface here later
+	logger             *slog.Logger
+	kv                 consulKV // Use the interface type
+	configMutex        sync.RWMutex
+	ipBlocklist        map[string]struct{}
+	userAgentBlocklist map[string]struct{} // map for User-Agent blocklists
 }
 
-// NewService creates and initializes a new authorization Service instance.
-// Exported (uppercase 'N') to be callable from main.
-// Accepts the consulKV interface, allowing injection of real or mock implementations.
+// NewService creates a new instance of the authorization Service.
 func NewService(logger *slog.Logger, kv consulKV) *Service {
 	return &Service{
-		logger:       logger,
-		kv:           kv, // Store the provided KV implementation (real or mock).
-		ipBlocklist:  make(map[string]struct{}),
-		// configMutex is ready by its zero-value.
+		logger:             logger,
+		kv:                 kv,
+		ipBlocklist:        make(map[string]struct{}),
+		userAgentBlocklist: make(map[string]struct{}), // Initialize the new map
 	}
 }
 
-// --- Core Logic Methods ---
-
-// FetchAndUpdateIPBlocklist fetches the blocklist from Consul KV (via the kv interface)
-// and updates the in-memory map safely.
-// Exported (uppercase 'F') so it can be called from main during startup or by background pollers.
-func (app *Service) FetchAndUpdateIPBlocklist() error {
-	if app.kv == nil { // Defensive check for the interface field.
-		return errors.New("Consul KV interface is not initialized")
-	}
-
-	// Call Get using the injected kv implementation (real or mock).
-	pair, _, err := app.kv.Get(ipBlocklistKey, nil) // Passing nil for QueryOptions for standard Get.
+// FetchAndUpdateIPBlocklist retrieves the IP blocklist from Consul KV
+// and updates the in-memory cache safely.
+func (s *Service) FetchAndUpdateIPBlocklist() error {
+	s.logger.Debug("Fetching IP blocklist from Consul KV", "key", ipBlocklistKVKey)
+	pair, _, err := s.kv.Get(ipBlocklistKVKey, nil)
 	if err != nil {
-		// Log error but allow service to continue; prevents paralysis on transient Consul issues.
-		app.logger.Error("Failed to fetch IP blocklist from Consul KV", "key", ipBlocklistKey, "error", err)
-		return fmt.Errorf("failed to get key %s from Consul KV: %w", ipBlocklistKey, err)
+		// Log the error but don't necessarily fail hard, maybe the key just doesn't exist yet
+		s.logger.Error("Failed to fetch IP blocklist from Consul", "key", ipBlocklistKVKey, "error", err)
+		return fmt.Errorf("failed to get key '%s' from consul: %w", ipBlocklistKVKey, err)
 	}
 
-	// Create a new map locally first to avoid holding the lock during parsing.
 	newBlocklist := make(map[string]struct{})
-
+	count := 0
 	if pair != nil && len(pair.Value) > 0 {
-		ipListString := string(pair.Value)
-		ips := strings.Split(ipListString, ",")
-		validIPs := 0
+		ips := strings.Split(string(pair.Value), ",")
 		for _, ip := range ips {
 			trimmedIP := strings.TrimSpace(ip)
 			if trimmedIP != "" {
-				// TODO: Add IP/CIDR validation here.
 				newBlocklist[trimmedIP] = struct{}{}
-				validIPs++
+				count++
 			}
 		}
-		app.logger.Info("Fetched IP blocklist from Consul KV", "key", ipBlocklistKey, "parsed_ips", validIPs)
+		s.logger.Info("Fetched IP blocklist from Consul KV", "key", ipBlocklistKVKey, "parsed_ips", count)
 	} else {
-		app.logger.Warn("IP blocklist key not found or empty in Consul KV", "key", ipBlocklistKey)
+		s.logger.Info("IP blocklist key not found or empty in Consul KV", "key", ipBlocklistKVKey)
 	}
 
-	// Atomically swap the application's active blocklist with the new one.
-	app.configMutex.Lock() // Acquire Write Lock
-	app.ipBlocklist = newBlocklist
-	app.configMutex.Unlock() // Release Write Lock
+	// Lock for writing and update the map
+	s.configMutex.Lock()
+	s.ipBlocklist = newBlocklist
+	s.configMutex.Unlock()
+	s.logger.Debug("Updated in-memory IP blocklist")
 
-	app.logger.Debug("Successfully updated in-memory IP blocklist")
 	return nil
 }
 
-// HandleAuthzRequest is the core HTTP handler for Envoy ext_authz check requests.
-// Exported (uppercase 'H') so it can be assigned to an http.ServeMux route in main.
-// Note: This method does not directly use the 'kv' interface field, only the map populated by it.
-func (app *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
-	baseLogger := app.logger.With(
-		"method", r.Method,
-		"path", r.URL.Path,
-		"remote_addr", r.RemoteAddr, // Direct peer (Envoy) address
-		"user_agent", r.Header.Get("User-Agent"),
-	)
+// FetchAndUpdateUABlocklist retrieves the User-Agent blocklist from Consul KV
+// and updates the in-memory cache safely.
+func (s *Service) FetchAndUpdateUABlocklist() error {
+	s.logger.Debug("Fetching User-Agent blocklist from Consul KV", "key", uaBlocklistKVKey)
+	pair, _, err := s.kv.Get(uaBlocklistKVKey, nil)
+	if err != nil {
+		s.logger.Error("Failed to fetch User-Agent blocklist from Consul", "key", uaBlocklistKVKey, "error", err)
+		return fmt.Errorf("failed to get key '%s' from consul: %w", uaBlocklistKVKey, err)
+	}
 
-	var clientIP string
+	newBlocklist := make(map[string]struct{})
+	count := 0
+	if pair != nil && len(pair.Value) > 0 {
+		userAgents := strings.Split(string(pair.Value), ",")
+		for _, ua := range userAgents {
+			trimmedUA := strings.TrimSpace(ua)
+			if trimmedUA != "" {
+				newBlocklist[trimmedUA] = struct{}{}
+				count++
+			}
+		}
+		s.logger.Info("Fetched User-Agent blocklist from Consul KV", "key", uaBlocklistKVKey, "parsed_uas", count)
+	} else {
+		s.logger.Info("User-Agent blocklist key not found or empty in Consul KV", "key", uaBlocklistKVKey)
+	}
+
+	// Lock for writing and update the map
+	s.configMutex.Lock()
+	s.userAgentBlocklist = newBlocklist
+	s.configMutex.Unlock()
+	s.logger.Debug("Updated in-memory User-Agent blocklist")
+
+	return nil
+}
+
+// HandleAuthzRequest is the HTTP handler for Envoy's ext_authz filter.
+func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
+	// Log basic request info
+	// Extract relevant headers
+	method := r.Method
+	path := r.URL.Path
+	userAgent := r.Header.Get("User-Agent")
 	xff := r.Header.Get("X-Forwarded-For")
+	clientIP := ""
+
+	// Basic request logging context
+	logAttrs := []any{
+		slog.String("method", method),
+		slog.String("path", path),
+		slog.String("remote_addr", r.RemoteAddr),
+		slog.String("user_agent", userAgent),
+	}
+
+	// Extract the first IP from X-Forwarded-For if present
 	if xff != "" {
 		ips := strings.Split(xff, ",")
 		clientIP = strings.TrimSpace(ips[0])
-		baseLogger = baseLogger.With("client_ip", clientIP)
+		logAttrs = append(logAttrs, slog.String("client_ip", clientIP))
 	} else {
-		baseLogger.Warn("X-Forwarded-For header missing or empty")
-		clientIP = "" // Define policy: Treat as empty/unidentifiable IP.
+		s.logger.Warn("X-Forwarded-For header missing or empty", logAttrs...)
+		// Policy decision: Allow or deny requests without XFF? For now, allow.
 	}
-	baseLogger.Info("Received authz request")
 
+	// --- Decision Logic ---
+	// Acquire read lock to safely access configuration maps
+	s.configMutex.RLock()
+	defer s.configMutex.RUnlock() // Ensure lock is released
+
+	// 1. Check IP Blocklist (if clientIP is determined)
 	if clientIP != "" {
-		// Safely read the shared blocklist map.
-		app.configMutex.RLock() // Acquire Read Lock (allows concurrent reads).
-		_, blocked := app.ipBlocklist[clientIP]
-		app.configMutex.RUnlock() // Release Read Lock promptly.
-
-		if blocked {
-			baseLogger.Warn("Request denied", "reason", "ip_blocklist")
-			w.Header().Set("X-Authz-Decision", "Deny-IPBlock") // Custom header aids debugging/observability.
+		if _, blocked := s.ipBlocklist[clientIP]; blocked {
+			logAttrs = append(logAttrs, slog.String("reason", "ip_blocklist"))
+			s.logger.Warn("Request denied", logAttrs...)
+			w.Header().Set("X-Authz-Decision", "Deny-IPBlock")
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintln(w, "Access denied.") // Minimal response body.
-			return                            // Stop processing.
+			fmt.Fprintln(w, "Access denied.")
+			return
 		}
 	}
 
-	// TODO: Implement UA check.
-	// TODO: Implement rate limiting.
+	// 2. Check User-Agent Blocklist
+	if userAgent != "" {
+		if _, blocked := s.userAgentBlocklist[userAgent]; blocked {
+			// Make sure clientIP attribute is added if available before logging denial
+			if clientIP != "" {
+				logAttrs = append(logAttrs, slog.String("client_ip", clientIP))
+			}
+			logAttrs = append(logAttrs, slog.String("reason", "ua_blocklist"))
+			s.logger.Warn("Request denied", logAttrs...)
+			w.Header().Set("X-Authz-Decision", "Deny-UABlock") // Specific denial reason
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprintln(w, "Access denied.")
+			return
+		}
+	}
 
-	decision := "Allow"
-	statusCode := http.StatusOK
-	w.Header().Set("X-Authz-Decision", decision)
-	w.WriteHeader(statusCode)
+	// --- End Decision Logic ---
+
+	// If no checks resulted in denial, allow the request.
+	// Add clientIP if available before logging the final decision
+	if clientIP != "" {
+		logAttrs = append(logAttrs, slog.String("client_ip", clientIP))
+	}
+	s.logger.Info("Request allowed", logAttrs...)
+	w.Header().Set("X-Authz-Decision", "Allow")
+	w.WriteHeader(http.StatusOK)
+	// No body needed for allowed requests according to Envoy spec unless passing headers back
 }
-
-// --- End Core Logic Methods ---
