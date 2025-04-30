@@ -1,0 +1,2 @@
+# defaults file for authz_service
+authz_service_listen_port: 9001

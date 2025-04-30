@@ -1,4 +1,3 @@
-# ~/src/gcc-ansible-wsl/ansible/configure_vm.yml
 ---
 - name: Configure gcc-gem-a VM
   hosts: gcc-gem-a
@@ -14,6 +13,7 @@
     - prometheus
     # - grafana # Removed - will run locally via SSH tunnel
     - consul
+    - authz_service
     - envoy
     - grewal-backend
 

@@ -1,0 +1,33 @@
+---
+# tasks file for authz_service role
+
+- name: Ensure authz service configuration directory exists
+  ansible.builtin.file:
+    path: "/etc/consul.d"
+    state: directory
+    mode: '0755'
+
+- name: Deploy Consul service definition for authz-service
+  ansible.builtin.template:
+    src: authz-service.hcl.j2
+    dest: "/etc/consul.d/authz-service.hcl"
+    owner: consul
+    group: consul
+    mode: '0644'
+  notify: Reload Consul Configuration # Handler defined in main playbook
+
+- name: Deploy systemd service file for authz-service
+  ansible.builtin.template:
+    src: authz-service.service.j2
+    dest: "/etc/systemd/system/authz-service.service"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload systemd daemon # Handler defined in main playbook
+
+- name: Ensure authz-service systemd service is enabled and started
+  ansible.builtin.systemd:
+    name: "authz-service"
+    state: started # Will trigger the ExecStartPre pull/run sequence
+    enabled: true
+    daemon_reload: true # Ensure systemd reads the new file before trying to start
