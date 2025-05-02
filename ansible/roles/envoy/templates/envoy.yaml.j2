@@ -47,6 +47,10 @@ static_resources:
                             patterns:
                               - exact: "user-agent"
                               - exact: "x-forwarded-for"
+                        authorization_response:
+                          allowed_upstream_headers:
+                            patterns:
+                              - exact: "x-authz-user"
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": |-
