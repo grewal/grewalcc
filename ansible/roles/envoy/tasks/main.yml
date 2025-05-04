@@ -4,7 +4,7 @@
 # 1. Lint the template file locally before attempting deployment
 - name: Lint Envoy YAML template before deployment
   ansible.builtin.command:
-    cmd: "yamllint {{ role_path }}/templates/envoy.yaml.j2"
+    cmd: "yamllint {{role_path}}/templates/envoy.yaml.j2"
   delegate_to: localhost
   become: no
   changed_when: false

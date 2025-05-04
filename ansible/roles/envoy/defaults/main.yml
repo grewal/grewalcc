@@ -1,0 +1,11 @@
+---
+# roles/envoy/defaults/main.yml
+envoy_image_tag: "v1.34.0"
+envoy_image_repository: "envoyproxy/envoy"
+
+# Core envoy variables
+
+envoy_admin_address: "127.0.0.1"
+envoy_admin_port: 9901
+envoy_listener_address: "0.0.0.0"
+envoy_listener_port: 8888
