@@ -1,8 +1,15 @@
-# ~/src/gcc-gem-a/ansible/roles/envoy/handlers/main.yml
 ---
-- name: Reload systemd and restart envoy
+# handlers file for envoy role
+
+- name: Reload systemd daemon
+  become: yes
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  listen: "Reload systemd daemon"
+
+- name: Restart envoy service
+  become: yes
   ansible.builtin.systemd:
     name: envoy.service
     state: restarted
-    daemon_reload: true # Ensure systemd reads the new unit file
-  become: true # Run this task as root (sudo)
+  listen: "Restart envoy service"
