@@ -1,5 +1,18 @@
-# ~/src/gcc-gem-a/ansible/roles/envoy/tasks/main.yml
 ---
+# tasks file for envoy role
+
+# 1. Lint the template file locally before attempting deployment
+- name: Lint Envoy YAML template before deployment
+  ansible.builtin.command:
+    cmd: "yamllint {{ role_path }}/templates/envoy.yaml.j2"
+  delegate_to: localhost
+  become: no
+  changed_when: false
+  check_mode: false
+  tags:
+    - lint
+
+# 2. Deploy Envoy systemd unit file
 - name: Deploy Envoy systemd unit file
   ansible.builtin.template:
     src: envoy.service.j2
@@ -7,36 +20,48 @@
     owner: root
     group: root
     mode: '0644'
-  notify: Reload systemd and restart envoy # Notify handler if service file changes
-  become: true # Run this task as root (sudo)
+  become: yes
+  notify: Reload systemd daemon
 
+# 3. Ensure Envoy config directory exists
 - name: Ensure Envoy config directory exists
   ansible.builtin.file:
-    path: /etc/envoy # Directory where envoy.yaml will be placed
+    path: /etc/envoy
     state: directory
-    owner: root
-    group: root
     mode: '0755'
-  become: true # Run this task as root (sudo)
+  become: yes
 
+# 4. Deploy Envoy configuration file (envoy.yaml)
 - name: Deploy Envoy configuration file (envoy.yaml)
   ansible.builtin.template:
-    src: envoy.yaml.j2         # Source is our new template
-    dest: /etc/envoy/envoy.yaml # Destination matches path in service file volume mount
+    src: envoy.yaml.j2
+    dest: /etc/envoy/envoy.yaml
     owner: root
     group: root
     mode: '0644'
-  # vars: block removed from here
-  notify: Reload systemd and restart envoy # Notify handler if config file changes
-  become: true # Run this task as root (sudo)
+  become: yes
+  notify: Restart envoy service
 
+# 5. Validate Envoy configuration using target Envoy image (AFTER deployment)
+- name: Validate Envoy configuration using target Envoy image
+  ansible.builtin.command:
+    cmd: >-
+      docker run --rm
+      -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      {{envoy_image_repository}}:{{envoy_image_tag}}
+      --mode validate -c /etc/envoy/envoy.yaml
+  # No become needed if ansible_user is in docker group
+  register: envoy_validate_result
+  changed_when: false
+  failed_when: envoy_validate_result.rc != 0
+  when: ansible_check_mode is not defined or not ansible_check_mode
+  tags:
+    - envoy_validate
+
+# 6. Ensure Envoy service is started and enabled
 - name: Ensure Envoy service is started and enabled
   ansible.builtin.systemd:
     name: envoy.service
     state: started
-    enabled: true
-    # Note: daemon_reload only strictly needed if unit file changes,
-    # but handler already covers restart logic for both unit and config changes.
-    # Keeping daemon_reload here doesn't hurt.
-    daemon_reload: true
-  become: true # Run this task as root (sudo)
+    enabled: yes
+  become: yes
