@@ -21,7 +21,9 @@
     group: root
     mode: '0644'
   become: yes
-  notify: Reload systemd daemon
+  notify:
+    - Reload systemd daemon
+    - Restart envoy service
 
 # 3. Ensure Envoy config directory exists
 - name: Ensure Envoy config directory exists
