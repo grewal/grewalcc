@@ -90,7 +90,7 @@ func (s *Service) FetchAndUpdateUABlocklist() error {
 	newBlocklist := make(map[string]struct{})
 	count := 0
 	if pair != nil && len(pair.Value) > 0 {
-		userAgents := strings.Split(string(pair.Value), ",")
+		userAgents := strings.Split(string(pair.Value), "\n")
 		for _, ua := range userAgents {
 			trimmedUA := strings.TrimSpace(ua)
 			if trimmedUA != "" {
