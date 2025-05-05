@@ -94,7 +94,7 @@ func TestHandleAuthzRequest(t *testing.T) {
 		},
 		{
 			name:           "Blocked UA",
-			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0, AnotherBadBot")},
+			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0\nAnotherBadBot")},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "BadBot/1.0"},
@@ -104,7 +104,7 @@ func TestHandleAuthzRequest(t *testing.T) {
 		},
 		{
 			name:           "Blocked UA (second in list)",
-			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0, AnotherBadBot")},
+			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0\nAnotherBadBot")},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "AnotherBadBot"},
@@ -304,78 +304,115 @@ func TestFetchAndUpdateIPBlocklist(t *testing.T) {
 		})
 	}
 }
-
-// --- Test FetchAndUpdateUABlocklist --- (New Test Function)
+// --- Test FetchAndUpdateUABlocklist ---) 
 
 func TestFetchAndUpdateUABlocklist(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+        // Use a logger that writes to a buffer during tests to avoid cluttering test output,
+        // unless explicitly debugging. Use os.Stderr for debugging.
+        // buf := &bytes.Buffer{}
+        // logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+        logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})) // Keep INFO for less noise
 
-	testCases := []struct {
-		name           string
-		mockKV         *mockConsulKV
-		expectedErr    bool
-		expectedMapLen int
-		expectContains map[string]bool // map key -> bool (true if expected)
-	}{
-		{
-			name:           "Successful fetch",
-			mockKV:         &mockConsulKV{uaData: []byte(" BadBot/1.0 , NastyCrawler/2.1, ExactUA String ")},
-			expectedErr:    false,
-			expectedMapLen: 3,
-			expectContains: map[string]bool{"BadBot/1.0": true, "NastyCrawler/2.1": true, "ExactUA String": true, "GoodBot": false},
-		},
-		{
-			name:           "Empty value",
-			mockKV:         &mockConsulKV{uaData: []byte("")},
-			expectedErr:    false,
-			expectedMapLen: 0,
-			expectContains: map[string]bool{"BadBot/1.0": false},
-		},
-		{
-			name:           "Key not found",
-			mockKV:         &mockConsulKV{uaData: nil}, // nil simulates key not found
-			expectedErr:    false,
-			expectedMapLen: 0,
-			expectContains: map[string]bool{"BadBot/1.0": false},
-		},
-		{
-			name:           "Consul error",
-			mockKV:         &mockConsulKV{uaError: fmt.Errorf("consul connection error")},
-			expectedErr:    true,
-			expectedMapLen: 0, // Map should remain empty on error
-		},
-		{
-			name:           "Malformed value (extra commas)",
-			mockKV:         &mockConsulKV{uaData: []byte(",BadBot/1.0,,NastyCrawler/2.1,")},
-			expectedErr:    false,
-			expectedMapLen: 2,
-			expectContains: map[string]bool{"BadBot/1.0": true, "NastyCrawler/2.1": true},
-		},
-	}
+        testCases := []struct {
+                name           string
+                mockKV         *mockConsulKV
+                expectedErr    bool
+                expectedMapLen int
+                expectContains map[string]bool // map key -> bool (true if expected)
+        }{
+                {
+                        name: "Successful fetch with newlines",
+                        // Correct mock data using \n delimiter
+                        mockKV:         &mockConsulKV{uaData: []byte(" BadBot/1.0 \n NastyCrawler/2.1 \n ExactUA String \n")},
+                        expectedErr:    false,
+                        expectedMapLen: 3, // Expect 3 entries after splitting by \n and trimming
+                        expectContains: map[string]bool{"BadBot/1.0": true, "NastyCrawler/2.1": true, "ExactUA String": true, "GoodBot": false},
+                },
+                {
+                        name:           "Empty value",
+                        mockKV:         &mockConsulKV{uaData: []byte("")},
+                        expectedErr:    false,
+                        expectedMapLen: 0,
+                        expectContains: map[string]bool{"BadBot/1.0": false},
+                },
+                {
+                        name:           "Key not found",
+                        mockKV:         &mockConsulKV{uaData: nil},
+                        expectedErr:    false,
+                        expectedMapLen: 0,
+                        expectContains: map[string]bool{"BadBot/1.0": false},
+                },
+                {
+                        name:           "Consul error",
+                        mockKV:         &mockConsulKV{uaError: fmt.Errorf("consul connection error")},
+                        expectedErr:    true,
+                        expectedMapLen: 0, // Map should remain empty on error
+                },
+                {
+                        name: "String with internal commas but no newlines",
+                         // This mock data has NO newlines, so Split by \n results in ONE entry
+                        mockKV:         &mockConsulKV{uaData: []byte("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36")},
+                        expectedErr:    false,
+                        expectedMapLen: 1, // Expect 1 entry because no \n
+                        expectContains: map[string]bool{"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36": true, "KHTML": false},
+                },
+                {
+                         name: "Value with extra newlines",
+                         // Test trimming of blank lines resulting from extra newlines
+                         mockKV:         &mockConsulKV{uaData: []byte("\nBadBot/1.0\n\nNastyCrawler/2.1\n")},
+                         expectedErr:    false,
+                         expectedMapLen: 2, // Expect 2 entries after trimming empty strings
+                         expectContains: map[string]bool{"BadBot/1.0": true, "NastyCrawler/2.1": true},
+                },
+                {
+                         name: "Single value with newline",
+                         mockKV:         &mockConsulKV{uaData: []byte("JustOneUA\n")},
+                         expectedErr:    false,
+                         expectedMapLen: 1, // Expect 1 entry
+                         expectContains: map[string]bool{"JustOneUA": true},
+                 },
+                 {
+                         name: "Single value no newline",
+                         mockKV:         &mockConsulKV{uaData: []byte("OnlyMe")},
+                         expectedErr:    false,
+                         expectedMapLen: 1, // Expect 1 entry
+                         expectContains: map[string]bool{"OnlyMe": true},
+                 },
+        }
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			app := NewService(logger, tc.mockKV)
-			err := app.FetchAndUpdateUABlocklist() // Test the new function
+        for _, tc := range testCases {
+                t.Run(tc.name, func(t *testing.T) {
+                        // Reset the buffer for each test if using buffer logging
+                        // buf.Reset()
+                        app := NewService(logger, tc.mockKV)
+                        err := app.FetchAndUpdateUABlocklist() // Test the correct function
 
-			if (err != nil) != tc.expectedErr {
-				t.Fatalf("FetchAndUpdateUABlocklist() error = %v, expectedErr %v", err, tc.expectedErr)
-			}
+                        if (err != nil) != tc.expectedErr {
+                                t.Fatalf("FetchAndUpdateUABlocklist() error = %v, expectedErr %v", err, tc.expectedErr)
+                                // fmt.Println("Test Log Output:\n", buf.String()) // Print logs on error if using buffer
+                        }
 
-			// Lock is needed to safely read the map after potential modification
-			app.configMutex.RLock()
-			defer app.configMutex.RUnlock()
+                        if tc.expectedErr {
+                                return // Don't check map if error was expected
+                        }
 
-			if len(app.userAgentBlocklist) != tc.expectedMapLen { // Check the correct map
-				t.Errorf("Expected map length %d, got %d", tc.expectedMapLen, len(app.userAgentBlocklist))
-			}
+                        app.configMutex.RLock()
+                        defer app.configMutex.RUnlock()
 
-			for key, expected := range tc.expectContains {
-				_, actual := app.userAgentBlocklist[key] // Check the correct map
-				if actual != expected {
-					t.Errorf("For key %q, expected presence %v, got %v", key, expected, actual)
-				}
-			}
-		})
-	}
+                        if len(app.userAgentBlocklist) != tc.expectedMapLen {
+                                t.Errorf("Expected map length %d, got %d (Map: %v)", tc.expectedMapLen, len(app.userAgentBlocklist), app.userAgentBlocklist)
+                                // fmt.Println("Test Log Output:\n", buf.String()) // Print logs on error if using buffer
+                        }
+
+                        for key, expected := range tc.expectContains {
+                                _, actual := app.userAgentBlocklist[key] // Check the correct map
+                                if actual != expected {
+                                        t.Errorf("For key %q, expected presence %v, got %v", key, expected, actual)
+                                        // fmt.Println("Test Log Output:\n", buf.String()) // Print logs on error if using buffer
+                                }
+                        }
+                        // Optional: Print logs even on success for debugging
+                        // fmt.Println("Test Log Output:\n", buf.String())
+                })
+        }
 }
