@@ -37,7 +37,10 @@ static_resources:
                             %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" \
                             %RESPONSE_CODE% %RESPONSE_FLAGS% \
                             UpstreamHost=%UPSTREAM_HOST% Duration=%DURATION%ms \
-                            ReqHeaders=[%REQ(:HEADER_MAP)%]
+                            XFF=[%REQ(x-forwarded-for)%] \
+                            UserAgent=[%REQ(user-agent)%] \
+                            ContentType=[%REQ(content-type)%] \
+                            Authority=[%REQ(:authority)%]
                 http_filters:
                   - name: envoy.filters.http.grpc_web
                     typed_config:

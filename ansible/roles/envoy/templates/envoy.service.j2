@@ -19,7 +19,7 @@ ExecStartPre=-/usr/bin/docker rm envoy-svc
 ExecStartPre=-/usr/bin/docker pull {{ envoy_image_repository }}:{{ envoy_image_tag }}
 
 # Run the Envoy container using host networking - All on one line
-ExecStart=/usr/bin/docker run --rm --network host --name envoy-svc -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro {{ envoy_image_repository }}:{{ envoy_image_tag }} -c /etc/envoy/envoy.yaml --component-log-level upstream:debug,dns:debug
+ExecStart=/usr/bin/docker run --rm --network host --name envoy-svc -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro {{ envoy_image_repository }}:{{ envoy_image_tag }} -c /etc/envoy/envoy.yaml
 
 # Stop the container gracefully
 ExecStop=/usr/bin/docker stop envoy-svc
