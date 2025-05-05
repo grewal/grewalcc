@@ -1,12 +1,15 @@
 ---
 # tasks file for authz_service role
 
-- name: Ensure authz service configuration directory exists
+# 1. Ensure dependent directories exist (Consul config dir)
+- name: Ensure Consul config directory exists for service definition
   ansible.builtin.file:
     path: "/etc/consul.d"
     state: directory
     mode: '0755'
+  become: yes # Assuming root needed for /etc/consul.d
 
+# 2. Deploy Consul service definition for authz-service
 - name: Deploy Consul service definition for authz-service
   ansible.builtin.template:
     src: authz-service.hcl.j2
@@ -14,20 +17,23 @@
     owner: consul
     group: consul
     mode: '0644'
-  notify: Reload Consul Configuration # Handler defined in main playbook
+  become: yes # Needed to write to /etc/consul.d
+  notify: Reload Consul Configuration
 
-- name: Deploy systemd service file for authz-service
-  ansible.builtin.template:
-    src: authz-service.service.j2
-    dest: "/etc/systemd/system/authz-service.service"
-    owner: root
-    group: root
-    mode: '0644'
-  notify: Reload systemd daemon # Handler defined in main playbook
-
-- name: Ensure authz-service systemd service is enabled and started
-  ansible.builtin.systemd:
-    name: "authz-service"
-    state: started # Will trigger the ExecStartPre pull/run sequence
-    enabled: true
-    daemon_reload: true # Ensure systemd reads the new file before trying to start
+# 3. Ensure authz-service container is running using the specified tag
+- name: Ensure authz-service container is running
+  community.docker.docker_container:
+    name: authz-service
+    image: "grewal/authz-service:{{ authz_service_image_tag }}"
+    state: started         # Ensure container is running
+    pull: true             # Always attempt to pull the specified image tag
+    recreate: true         # Recreate container if image or config differs from definition
+    network_mode: host     # Use host networking
+    restart_policy: always # Automatically restart if it stops/crashes
+    env:                   # Environment variables
+      CONSUL_HTTP_ADDR: "127.0.0.1:8500"
+      LISTEN_ADDR: ":{{ authz_service_listen_port | default(9001) }}"
+    labels:
+      service: authz-service
+      managed_by: ansible
+  become: no
