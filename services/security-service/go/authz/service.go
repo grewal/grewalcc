@@ -1,65 +1,145 @@
 package authz
 
 import (
-	"context" // Needed for interface method signatures
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
-	"time" // Needed for interface method signatures
+	"time"
 
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/redis/go-redis/v9"
 )
 
-// Define constants for Consul KV keys
 const (
-	ipBlocklistKVKey = "config/security/ip_blocklist"
-	uaBlocklistKVKey = "config/security/ua_blocklist"
-	// Add rate limit keys later:
-	// rateLimitEnabledKey      = "config/security/ratelimit/enabled"
-	// rateLimitLimitPerWindowKey = "config/security/ratelimit/limit_per_window"
-	// rateLimitWindowSecondsKey  = "config/security/ratelimit/window_seconds"
+	ipBlocklistKVKey           = "config/security/ip_blocklist"
+	uaBlocklistKVKey           = "config/security/ua_blocklist"
+	rateLimitEnabledKey        = "config/security/ratelimit/enabled"
+	rateLimitLimitPerWindowKey = "config/security/ratelimit/limit_per_window"
+	rateLimitWindowSecondsKey  = "config/security/ratelimit/window_seconds"
 )
 
-// consulKV defines the minimal interface needed for interacting with Consul KV.
+const (
+	defaultRateLimitEnabled       = false
+	defaultRateLimitCount         = 60
+	defaultRateLimitWindowSeconds = 60
+)
+
 type consulKV interface {
 	Get(key string, q *consulapi.QueryOptions) (*consulapi.KVPair, *consulapi.QueryMeta, error)
 }
 
-// redisClientInterface defines the subset of Redis commands used by the authz service.
-// This allows for mocking during testing.
 type redisClientInterface interface {
 	Incr(ctx context.Context, key string) *redis.IntCmd
 	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
-	Ping(ctx context.Context) *redis.StatusCmd // For potential internal health checks
-	Close() error                             // For graceful shutdown
+	Ping(ctx context.Context) *redis.StatusCmd
+	Close() error
 }
 
-// Service holds the dependencies and state for the authorization service.
 type Service struct {
 	logger             *slog.Logger
-	consulKV           consulKV             // Interface for Consul KV access
-	redisClient        redisClientInterface // Use the interface type
+	consulKV           consulKV
+	redisClient        redisClientInterface
 	ipBlocklist        map[string]struct{}
 	userAgentBlocklist map[string]struct{}
 	configMutex        sync.RWMutex
-	// Future: Add fields for rate limit config (enabled, limit, window)
+	rateLimitEnabled   bool
+	rateLimitCount     int64
+	rateLimitWindow    time.Duration
 }
 
-// NewService creates a new authorization service instance.
-func NewService(logger *slog.Logger, kv consulKV, rdb redisClientInterface) *Service { // Accept interface
+func NewService(logger *slog.Logger, kv consulKV, rdb redisClientInterface) *Service {
 	return &Service{
 		logger:             logger.With("component", "authz_service"),
 		consulKV:           kv,
-		redisClient:        rdb, // Store the provided client (interface)
+		redisClient:        rdb,
 		ipBlocklist:        make(map[string]struct{}),
 		userAgentBlocklist: make(map[string]struct{}),
+		rateLimitEnabled:   defaultRateLimitEnabled,
+		rateLimitCount:     defaultRateLimitCount,
+		rateLimitWindow:    defaultRateLimitWindowSeconds * time.Second,
 	}
 }
 
-// FetchAndUpdateIPBlocklist fetches the IP blocklist from Consul KV and updates the in-memory map.
+func (s *Service) FetchAndUpdateRateLimitConfig() error {
+	var fetchedEnabled bool = defaultRateLimitEnabled
+	var fetchedCount int64 = defaultRateLimitCount
+	var fetchedWindowSecs int64 = defaultRateLimitWindowSeconds
+	var finalErr error
+
+	s.logger.Debug("Fetching rate limit config from Consul KV...")
+
+	kvPairEnabled, _, err := s.consulKV.Get(rateLimitEnabledKey, nil)
+	if err != nil {
+		s.logger.Error("Failed to get rate limit enabled flag from Consul", "key", rateLimitEnabledKey, "error", err)
+		finalErr = fmt.Errorf("failed to fetch enabled flag: %w", err)
+	} else if kvPairEnabled == nil || len(kvPairEnabled.Value) == 0 {
+		s.logger.Info("Rate limit enabled key not found or empty, using default.", "key", rateLimitEnabledKey, "default", defaultRateLimitEnabled)
+	} else {
+		parsedBool, err := strconv.ParseBool(string(kvPairEnabled.Value))
+		if err != nil {
+			s.logger.Error("Failed to parse rate limit enabled flag from Consul, using default.", "key", rateLimitEnabledKey, "value", string(kvPairEnabled.Value), "default", defaultRateLimitEnabled, "error", err)
+			if finalErr == nil { finalErr = fmt.Errorf("failed to parse enabled flag: %w", err) }
+		} else {
+			fetchedEnabled = parsedBool
+		}
+	}
+
+	kvPairLimit, _, err := s.consulKV.Get(rateLimitLimitPerWindowKey, nil)
+	if err != nil {
+		s.logger.Error("Failed to get rate limit count from Consul", "key", rateLimitLimitPerWindowKey, "error", err)
+		if finalErr == nil { finalErr = fmt.Errorf("failed to fetch limit count: %w", err) }
+	} else if kvPairLimit == nil || len(kvPairLimit.Value) == 0 {
+		s.logger.Info("Rate limit count key not found or empty, using default.", "key", rateLimitLimitPerWindowKey, "default", defaultRateLimitCount)
+	} else {
+		parsedInt, err := strconv.ParseInt(string(kvPairLimit.Value), 10, 64)
+		if err != nil || parsedInt <= 0 {
+			errMsg := "Failed to parse rate limit count from Consul or value <= 0, using default."
+			if err == nil { err = fmt.Errorf("parsed limit %d is not positive", parsedInt) }
+			s.logger.Error(errMsg, "key", rateLimitLimitPerWindowKey, "value", string(kvPairLimit.Value), "default", defaultRateLimitCount, "error", err)
+			if finalErr == nil { finalErr = fmt.Errorf("failed to parse limit count: %w", err) }
+		} else {
+			fetchedCount = parsedInt
+		}
+	}
+
+	kvPairWindow, _, err := s.consulKV.Get(rateLimitWindowSecondsKey, nil)
+	if err != nil {
+		s.logger.Error("Failed to get rate limit window from Consul", "key", rateLimitWindowSecondsKey, "error", err)
+		if finalErr == nil { finalErr = fmt.Errorf("failed to fetch window seconds: %w", err) }
+	} else if kvPairWindow == nil || len(kvPairWindow.Value) == 0 {
+		s.logger.Info("Rate limit window key not found or empty, using default.", "key", rateLimitWindowSecondsKey, "default", defaultRateLimitWindowSeconds)
+	} else {
+		parsedInt, err := strconv.ParseInt(string(kvPairWindow.Value), 10, 64)
+		if err != nil || parsedInt <= 0 {
+			errMsg := "Failed to parse rate limit window from Consul or value <= 0, using default."
+			if err == nil { err = fmt.Errorf("parsed window %d is not positive", parsedInt) }
+			s.logger.Error(errMsg, "key", rateLimitWindowSecondsKey, "value", string(kvPairWindow.Value), "default", defaultRateLimitWindowSeconds, "error", err)
+			if finalErr == nil { finalErr = fmt.Errorf("failed to parse window seconds: %w", err) }
+		} else {
+			fetchedWindowSecs = parsedInt
+		}
+	}
+
+	s.configMutex.Lock()
+	s.rateLimitEnabled = fetchedEnabled
+	s.rateLimitCount = fetchedCount
+	s.rateLimitWindow = time.Duration(fetchedWindowSecs) * time.Second
+	s.configMutex.Unlock()
+
+	s.logger.Info("Updated rate limit configuration",
+		"source", "Consul KV",
+		"enabled", fetchedEnabled,
+		"limit", fetchedCount,
+		"window", s.rateLimitWindow,
+	)
+
+	return finalErr
+}
+
 func (s *Service) FetchAndUpdateIPBlocklist() error {
 	kvPair, _, err := s.consulKV.Get(ipBlocklistKVKey, nil)
 	if err != nil {
@@ -88,10 +168,9 @@ func (s *Service) FetchAndUpdateIPBlocklist() error {
 	s.ipBlocklist = newBlocklist
 	s.configMutex.Unlock()
 	s.logger.Debug("Updated IP blocklist", "source", "Consul KV", "parsed_ips", ipCount)
-	return nil
+	return nil // Ensure return nil on success
 }
 
-// FetchAndUpdateUABlocklist fetches the User-Agent blocklist from Consul KV.
 func (s *Service) FetchAndUpdateUABlocklist() error {
 	kvPair, _, err := s.consulKV.Get(uaBlocklistKVKey, nil)
 	if err != nil {
@@ -120,12 +199,10 @@ func (s *Service) FetchAndUpdateUABlocklist() error {
 	s.userAgentBlocklist = newBlocklist
 	s.configMutex.Unlock()
 	s.logger.Debug("Updated User-Agent blocklist", "source", "Consul KV", "parsed_uas", uaCount)
-	return nil
+	return nil // Ensure return nil on success
 }
 
-// HandleAuthzRequest is the HTTP handler for Envoy's external authorization check.
 func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
-	// Extract relevant headers
 	xff := r.Header.Get("X-Forwarded-For")
 	clientIP := ""
 	if xff != "" {
@@ -136,7 +213,6 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	userAgent := r.Header.Get("User-Agent")
 
-	// Structured logging context
 	logAttrs := []any{
 		slog.String("method", r.Method),
 		slog.String("path", r.URL.Path),
@@ -146,22 +222,19 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 
 	s.logger.Debug("Received authz request", logAttrs...)
 
-	// --- Decision Logic ---
 	s.configMutex.RLock() // Use Read Lock for checking rules
 	defer s.configMutex.RUnlock()
 
-	// 1. Check IP Blocklist
 	if clientIP != "" {
 		if _, blocked := s.ipBlocklist[clientIP]; blocked {
 			s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "ip_blocklist"))...)
-			w.Header().Set("X-Authz-Decision", "Deny-IPBlock") 
+			w.Header().Set("X-Authz-Decision", "Deny-IPBlock")
 			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprintln(w, "Access Denied: IP blocked.")
 			return
 		}
 	}
 
-	// 2. Check User-Agent Blocklist
 	if userAgent != "" {
 		if _, blocked := s.userAgentBlocklist[userAgent]; blocked {
 			s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "ua_blocklist"))...)
@@ -172,9 +245,20 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// if s.rateLimitEnabled { ... }
+	// --- Placeholder for Rate Limit Check (To be added later) ---
+	// Read config safely (already under RLock):
+	// isEnabled := s.rateLimitEnabled
+	// limit := s.rateLimitCount
+	// window := s.rateLimitWindow
+	//
+	// if isEnabled && clientIP != "" {
+	//    // Build Redis key: e.g., "ratelimit:" + clientIP
+	//    // Use s.redisClient.Incr(ctx, key)
+	//    // Use s.redisClient.Expire(ctx, key, window) - only on first incr? Use pipeline?
+	//    // Check result against limit
+	//    // If over limit: deny with 429
+	// }
 
-	// Allow if no checks failed
 	s.logger.Info("Request allowed", logAttrs...)
 	w.Header().Set("X-Authz-Decision", "Allow")
 	w.WriteHeader(http.StatusOK)
