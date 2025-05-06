@@ -33,6 +33,8 @@
     env:                   # Environment variables
       CONSUL_HTTP_ADDR: "127.0.0.1:8500"
       LISTEN_ADDR: ":{{ authz_service_listen_port | default(9001) }}"
+      REDIS_ADDR: "{{ authz_service_redis_addr | default('127.0.0.1:6379') }}"
+      REDIS_PASSWORD: "{{ redis_password }}"
     labels:
       service: authz-service
       managed_by: ansible
