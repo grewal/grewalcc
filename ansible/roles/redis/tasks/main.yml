@@ -1,0 +1,82 @@
+---
+# tasks file for redis role
+
+# Task 1: Ensure host directory exists
+- name: Ensure Redis host data directory exists
+  ansible.builtin.file:
+    path: "{{ redis_data_dir_host }}"
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: '0755'
+  become: yes # Elevate privileges to create/manage directory in /opt
+
+# Task 2: Ensure Redis container is running using docker_container
+- name: Set Redis password as resolved string
+  set_fact:
+    redis_password_resolved: "{{ redis_password }}"
+- name: Ensure Redis container is running (Lean Config)
+  community.docker.docker_container:
+    # --- Container Identification ---
+    name: "{{ redis_container_name }}"
+    image: "{{ redis_image_repository }}:{{ redis_image_tag }}"
+
+    # --- State Management ---
+    state: started         # Ensures the container is present and running.
+    pull: true             # Always tries to pull the specified image tag before starting.
+                           # If the image digest for 8.0-rc1-alpine changes on Docker Hub later,
+                           # this will pull the update.
+    recreate: true         # If the pulled image is different OR if any parameters below change,
+                           # Ansible will stop/remove the old container and create a new one.
+                           # Essential for applying updates correctly.
+    restart_policy: always # Tells the Docker daemon to automatically restart the container
+                           # if it stops for any reason (crash, host reboot).
+    timeout: 120
+    # --- Container Configuration ---
+    network_mode: host     # Use the host's network stack. Makes Redis accessible on
+                           # 127.0.0.1:6379 from other services on the same host easily.
+    
+    entrypoint: /usr/local/bin/redis-server
+
+    # --- Provide arguments directly to redis-server via 'command' (as a LIST) ---
+    command:
+      - "--save"
+      - ""
+      - "--appendonly"
+      - "no"
+   
+   
+      # command: >             # The command to run inside the container to start Redis.
+      #/usr/local/bin/redis-server         # The Redis executable.
+      #--save ""            # Disables RDB snapshotting (no automatic saves to disk).
+      #--appendonly no      # Disables AOF persistence (no command logging to disk).
+    
+    # volumes:             # We are intentionally *not* mounting volumes for now
+    #   - "{{ redis_data_dir_host }}:/data" # to disable disk persistence.
+    labels:
+      service: redis
+      managed_by: ansible
+  
+  become: no
+
+  # --- Capturing Output ---
+  register: redis_container_result # Store the outcome of this task (ok, changed, failed)
+                                    # in a variable named 'redis_container_result'.
+
+# Task 3: Show if the container state changed
+- name: Show Redis container result status
+  ansible.builtin.debug:
+    msg: "Redis container status: {{ 'Changed/Recreated' if redis_container_result.changed else 'Unchanged/Already Running' }}"
+  when: redis_container_result is defined
+
+# Task 4: Deploy Consul service definition for Redis
+- name: Deploy Consul service definition for Redis
+  ansible.builtin.template:
+    src: redis-service.hcl.j2                        # The template file in roles/redis/templates/
+    dest: "/etc/consul.d/redis-service.hcl"          # Destination path on the VM
+    owner: consul                                    # Correct owner for Consul agent to read
+    group: consul                                    # Correct group
+    mode: '0644'                                     # Standard permissions
+  become: yes                                          # Need root privileges to write to /etc/consul.d
+  notify: Reload Consul Configuration                  # Name of the handler in configure_vm.yml
+                                                       # This tells Consul to reload its config if this file changes.

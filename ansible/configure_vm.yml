@@ -12,6 +12,7 @@
     - prometheus
     # - grafana # Removed - will run locally via SSH tunnel
     - consul
+    - role: redis
     - authz_service
     - envoy
     - grewal-backend

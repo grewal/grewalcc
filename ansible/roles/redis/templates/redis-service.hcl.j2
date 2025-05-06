@@ -1,0 +1,22 @@
+# Ansible managed - Template: roles/redis/templates/redis-service.hcl.j2
+# Consul Service Definition for Redis
+
+service {
+  name = "redis"
+  id   = "redis-{{ ansible_hostname | default('localhost') }}"
+  port = {{ redis_port | default(6379) }}
+
+  tags = ["key-value", "cache", "no-persistence"]
+
+  # Health Check Configuration
+  check {
+    id       = "redis-tcp-check"             # Unique ID for the check
+    name     = "Redis TCP Port Check"        # Human-readable name
+    tcp      = "127.0.0.1:{{ redis_port | default(6379) }}" # Check if TCP port is open on loopback
+    interval = "10s"                         # How often to run the check
+    timeout  = "2s"                          # How long to wait for connection
+
+    failures_before_critical = 3             # Mark unhealthy after 3 consecutive failures
+    DeregisterCriticalServiceAfter = "5m"    # Remove service from catalog after 5 mins critical
+  }
+}

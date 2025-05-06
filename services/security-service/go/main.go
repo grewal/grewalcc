@@ -47,7 +47,7 @@ func pollConsulKV(app *authz.Service, logger *slog.Logger, wg *sync.WaitGroup, q
 
 	// Define the polling interval
 	// TODO: Make this configurable via environment variable
-	pollInterval := 60 * time.Second
+	pollInterval := 300 * time.Second
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop() // Ensure the ticker is stopped when the function exits
 
@@ -64,7 +64,7 @@ func pollConsulKV(app *authz.Service, logger *slog.Logger, wg *sync.WaitGroup, q
 				logger.Debug("Successfully polled and updated IP blocklist from Consul KV")
 			}
 
-			// Add polling for UA blocklist here as well
+			        // Add polling for UA blocklist here as well
 			logger.Debug("Polling Consul KV for User-Agent blocklist updates...")
 			if err := app.FetchAndUpdateUABlocklist(); err != nil {
 				logger.Error("Error polling Consul KV for User-Agent blocklist", "error", err)
