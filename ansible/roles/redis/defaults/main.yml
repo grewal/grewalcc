@@ -1,0 +1,8 @@
+---
+# defaults file for redis role
+redis_image_repository: "redis"
+redis_image_tag: "8.0.0-alpine"
+redis_container_name: "redis-server"
+redis_port: 6379
+# Data dir path still defined even if not mounted initially
+redis_data_dir_host: "/opt/redis/data"
