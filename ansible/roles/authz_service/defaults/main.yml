@@ -1,4 +1,4 @@
 ---
 # defaults file for authz_service role
-authz_service_image_tag: "v0.1.1"
+authz_service_image_tag: "v0.1.2"
 authz_service_listen_port: 9001
