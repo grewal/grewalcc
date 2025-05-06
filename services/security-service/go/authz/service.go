@@ -1,158 +1,155 @@
 package authz
 
 import (
+	"context" // Needed for interface method signatures
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
+	"time" // Needed for interface method signatures
 
 	consulapi "github.com/hashicorp/consul/api"
+	"github.com/redis/go-redis/v9" // Import added
 )
 
-const (
-	ipBlocklistKVKey = "config/security/ip_blocklist"
-	uaBlocklistKVKey = "config/security/ua_blocklist"
-)
-
-// consulKV defines the interface we need from the Consul KV client.
-// This allows for easier testing by mocking.
+// consulKV defines the minimal interface needed for interacting with Consul KV.
 type consulKV interface {
 	Get(key string, q *consulapi.QueryOptions) (*consulapi.KVPair, *consulapi.QueryMeta, error)
-	// Put(p *consulapi.KVPair, q *consulapi.WriteOptions) (*consulapi.WriteMeta, error)
 }
 
-// Service holds the core application logic and dependencies.
+// redisClientInterface defines the subset of Redis commands used by the authz service.
+// This allows for mocking during testing.
+type redisClientInterface interface {
+	Incr(ctx context.Context, key string) *redis.IntCmd
+	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
+	Ping(ctx context.Context) *redis.StatusCmd // For potential internal health checks
+	Close() error                             // For graceful shutdown
+	// Add other methods ONLY if authz.Service directly uses them later
+}
+
+// Service holds the dependencies and state for the authorization service.
 type Service struct {
 	logger             *slog.Logger
-	kv                 consulKV // Use the interface type
-	configMutex        sync.RWMutex
+	consulKV           consulKV             // Interface for Consul KV access
+	redisClient        redisClientInterface
 	ipBlocklist        map[string]struct{}
-	userAgentBlocklist map[string]struct{} // map for User-Agent blocklists
+	userAgentBlocklist map[string]struct{}
+	configMutex        sync.RWMutex
 }
 
-// NewService creates a new instance of the authorization Service.
-func NewService(logger *slog.Logger, kv consulKV) *Service {
+// NewService creates a new authorization service instance.
+func NewService(logger *slog.Logger, kv consulKV, rdb redisClientInterface) *Service {
 	return &Service{
-		logger:             logger,
-		kv:                 kv,
+		logger:             logger.With("component", "authz_service"),
+		consulKV:           kv,
+		redisClient:        rdb,
 		ipBlocklist:        make(map[string]struct{}),
-		userAgentBlocklist: make(map[string]struct{}), // Initialize the new map
+		userAgentBlocklist: make(map[string]struct{}),
+		// Initialize rate limit config fields later
 	}
 }
 
-// FetchAndUpdateIPBlocklist retrieves the IP blocklist from Consul KV
-// and updates the in-memory cache safely.
+// FetchAndUpdateIPBlocklist fetches the IP blocklist from Consul KV and updates the in-memory map.
 func (s *Service) FetchAndUpdateIPBlocklist() error {
-	s.logger.Debug("Fetching IP blocklist from Consul KV", "key", ipBlocklistKVKey)
-	pair, _, err := s.kv.Get(ipBlocklistKVKey, nil)
+	kvPair, _, err := s.consulKV.Get("config/security/ip_blocklist", nil)
 	if err != nil {
-		// Log the error but don't necessarily fail hard, maybe the key just doesn't exist yet
-		s.logger.Error("Failed to fetch IP blocklist from Consul", "key", ipBlocklistKVKey, "error", err)
-		return fmt.Errorf("failed to get key '%s' from consul: %w", ipBlocklistKVKey, err)
+		return fmt.Errorf("failed to get ip_blocklist from consul: %w", err)
+	}
+	if kvPair == nil || len(kvPair.Value) == 0 {
+		s.logger.Info("IP blocklist key not found or empty in Consul KV.")
+		// Clear the current blocklist if the key is gone/empty
+		s.configMutex.Lock()
+		s.ipBlocklist = make(map[string]struct{})
+		s.configMutex.Unlock()
+		return nil
 	}
 
-	newBlocklist := make(map[string]struct{})
-	count := 0
-	if pair != nil && len(pair.Value) > 0 {
-		ips := strings.Split(string(pair.Value), ",")
-		for _, ip := range ips {
-			trimmedIP := strings.TrimSpace(ip)
-			if trimmedIP != "" {
-				newBlocklist[trimmedIP] = struct{}{}
-				count++
-			}
+	// Assuming value is comma-separated IPs
+	ips := strings.Split(string(kvPair.Value), ",")
+	newBlocklist := make(map[string]struct{}, len(ips))
+	ipCount := 0
+	for _, ip := range ips {
+		trimmedIP := strings.TrimSpace(ip)
+		if trimmedIP != "" {
+			newBlocklist[trimmedIP] = struct{}{}
+			ipCount++
 		}
-		s.logger.Info("Fetched IP blocklist from Consul KV", "key", ipBlocklistKVKey, "parsed_ips", count)
-	} else {
-		s.logger.Info("IP blocklist key not found or empty in Consul KV", "key", ipBlocklistKVKey)
 	}
 
-	// Lock for writing and update the map
 	s.configMutex.Lock()
 	s.ipBlocklist = newBlocklist
 	s.configMutex.Unlock()
-	s.logger.Debug("Updated in-memory IP blocklist")
-
+	s.logger.Debug("Updated IP blocklist", "source", "Consul KV", "parsed_ips", ipCount)
 	return nil
 }
 
-// FetchAndUpdateUABlocklist retrieves the User-Agent blocklist from Consul KV
-// and updates the in-memory cache safely.
+// FetchAndUpdateUABlocklist fetches the User-Agent blocklist from Consul KV.
 func (s *Service) FetchAndUpdateUABlocklist() error {
-	s.logger.Debug("Fetching User-Agent blocklist from Consul KV", "key", uaBlocklistKVKey)
-	pair, _, err := s.kv.Get(uaBlocklistKVKey, nil)
+	kvPair, _, err := s.consulKV.Get("config/security/ua_blocklist", nil)
 	if err != nil {
-		s.logger.Error("Failed to fetch User-Agent blocklist from Consul", "key", uaBlocklistKVKey, "error", err)
-		return fmt.Errorf("failed to get key '%s' from consul: %w", uaBlocklistKVKey, err)
+		return fmt.Errorf("failed to get ua_blocklist from consul: %w", err)
+	}
+	if kvPair == nil || len(kvPair.Value) == 0 {
+		s.logger.Info("User-Agent blocklist key not found or empty in Consul KV.")
+		s.configMutex.Lock()
+		s.userAgentBlocklist = make(map[string]struct{})
+		s.configMutex.Unlock()
+		return nil
 	}
 
-	newBlocklist := make(map[string]struct{})
-	count := 0
-	if pair != nil && len(pair.Value) > 0 {
-		userAgents := strings.Split(string(pair.Value), "\n")
-		for _, ua := range userAgents {
-			trimmedUA := strings.TrimSpace(ua)
-			if trimmedUA != "" {
-				newBlocklist[trimmedUA] = struct{}{}
-				count++
-			}
+	// Assuming value is newline-separated User-Agents
+	userAgents := strings.Split(string(kvPair.Value), "\n")
+	newBlocklist := make(map[string]struct{}, len(userAgents))
+	uaCount := 0
+	for _, ua := range userAgents {
+		trimmedUA := strings.TrimSpace(ua)
+		if trimmedUA != "" {
+			newBlocklist[trimmedUA] = struct{}{}
+			uaCount++
 		}
-		s.logger.Info("Fetched User-Agent blocklist from Consul KV", "key", uaBlocklistKVKey, "parsed_uas", count)
-	} else {
-		s.logger.Info("User-Agent blocklist key not found or empty in Consul KV", "key", uaBlocklistKVKey)
 	}
 
-	// Lock for writing and update the map
 	s.configMutex.Lock()
 	s.userAgentBlocklist = newBlocklist
 	s.configMutex.Unlock()
-	s.logger.Debug("Updated in-memory User-Agent blocklist")
-
+	s.logger.Debug("Updated User-Agent blocklist", "source", "Consul KV", "parsed_uas", uaCount)
 	return nil
 }
 
-// HandleAuthzRequest is the HTTP handler for Envoy's ext_authz filter.
+// HandleAuthzRequest is the HTTP handler for Envoy's external authorization check.
 func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
-	// Log basic request info
-	// Extract relevant headers
-	method := r.Method
-	path := r.URL.Path
-	userAgent := r.Header.Get("User-Agent")
+	// Extract relevant headers (handle potential multiple XFF entries)
 	xff := r.Header.Get("X-Forwarded-For")
 	clientIP := ""
+	if xff != "" {
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			clientIP = strings.TrimSpace(ips[0]) // Get the first (presumably originating) IP
+		}
+	}
+	userAgent := r.Header.Get("User-Agent")
 
-	// Basic request logging context
+	// Structured logging context
 	logAttrs := []any{
-		slog.String("method", method),
-		slog.String("path", path),
-		slog.String("remote_addr", r.RemoteAddr),
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.String("client_ip", clientIP),
 		slog.String("user_agent", userAgent),
 	}
 
-	// Extract the first IP from X-Forwarded-For if present
-	if xff != "" {
-		ips := strings.Split(xff, ",")
-		clientIP = strings.TrimSpace(ips[0])
-		logAttrs = append(logAttrs, slog.String("client_ip", clientIP))
-	} else {
-		s.logger.Warn("X-Forwarded-For header missing or empty", logAttrs...)
-		// Policy decision: Allow or deny requests without XFF? For now, allow.
-	}
+	s.logger.Debug("Received authz request", logAttrs...)
 
 	// --- Decision Logic ---
-	// Acquire read lock to safely access configuration maps
-	s.configMutex.RLock()
-	defer s.configMutex.RUnlock() // Ensure lock is released
+	s.configMutex.RLock() // Use Read Lock for checking rules
+	defer s.configMutex.RUnlock()
 
-	// 1. Check IP Blocklist (if clientIP is determined)
+	// 1. Check IP Blocklist
 	if clientIP != "" {
 		if _, blocked := s.ipBlocklist[clientIP]; blocked {
-			logAttrs = append(logAttrs, slog.String("reason", "ip_blocklist"))
-			s.logger.Warn("Request denied", logAttrs...)
-			w.Header().Set("X-Authz-Decision", "Deny-IPBlock")
-			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintln(w, "Access denied.")
+			s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "ip_blocklist"))...)
+			w.WriteHeader(http.StatusForbidden) // Deny
+			fmt.Fprintln(w, "Access Denied: IP blocked.")
 			return
 		}
 	}
@@ -160,28 +157,26 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 	// 2. Check User-Agent Blocklist
 	if userAgent != "" {
 		if _, blocked := s.userAgentBlocklist[userAgent]; blocked {
-			// Make sure clientIP attribute is added if available before logging denial
-			if clientIP != "" {
-				logAttrs = append(logAttrs, slog.String("client_ip", clientIP))
-			}
-			logAttrs = append(logAttrs, slog.String("reason", "ua_blocklist"))
-			s.logger.Warn("Request denied", logAttrs...)
-			w.Header().Set("X-Authz-Decision", "Deny-UABlock") // Specific denial reason
-			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintln(w, "Access denied.")
+			s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "ua_blocklist"))...)
+			w.WriteHeader(http.StatusForbidden) // Deny
+			fmt.Fprintln(w, "Access Denied: Client blocked.")
 			return
 		}
 	}
 
-	// --- End Decision Logic ---
+	// --- Placeholder for Rate Limit Check (To be added later) ---
+	// if s.rateLimitEnabled { // Example structure
+	//    // Check rate limit using s.redisClient
+	//    // If over limit:
+	//    // s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "rate_limit"))...)
+	//    // w.WriteHeader(http.StatusTooManyRequests) // Deny 429
+	//    // fmt.Fprintln(w, "Rate limit exceeded.")
+	//    // return
+	// }
+	// --- End Placeholder ---
 
-	// If no checks resulted in denial, allow the request.
-	// Add clientIP if available before logging the final decision
-	if clientIP != "" {
-		logAttrs = append(logAttrs, slog.String("client_ip", clientIP))
-	}
+	// Allow if no checks failed
 	s.logger.Info("Request allowed", logAttrs...)
-	w.Header().Set("X-Authz-Decision", "Allow")
-	w.WriteHeader(http.StatusOK)
-	// No body needed for allowed requests according to Envoy spec unless passing headers back
+	w.WriteHeader(http.StatusOK) // Allow
+	fmt.Fprintln(w, "OK")
 }
