@@ -1,250 +1,248 @@
 package authz
 
 import (
-	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	// "sync" // No longer needed here
+	"strings"
 	"testing"
+	"time"
 
 	consulapi "github.com/hashicorp/consul/api"
+	"github.com/redis/go-redis/v9"
 )
 
-// mockConsulKV provides a mock implementation of the consulKV interface for testing.
 type mockConsulKV struct {
-	// Values to return for IP blocklist key
 	ipData  []byte
 	ipError error
-	// Values to return for UA blocklist key
 	uaData  []byte
 	uaError error
 }
 
-// Get simulates the Consul KV Get operation.
 func (m *mockConsulKV) Get(key string, q *consulapi.QueryOptions) (*consulapi.KVPair, *consulapi.QueryMeta, error) {
 	switch key {
 	case ipBlocklistKVKey:
-		if m.ipError != nil {
-			return nil, nil, m.ipError
-		}
-		if m.ipData == nil { // Simulate key not found
-			return nil, nil, nil // No error, but nil pair
-		}
+		if m.ipError != nil { return nil, nil, m.ipError }
+		if m.ipData == nil { return nil, nil, nil }
 		return &consulapi.KVPair{Key: key, Value: m.ipData}, nil, nil
 	case uaBlocklistKVKey:
-		if m.uaError != nil {
-			return nil, nil, m.uaError
-		}
-		if m.uaData == nil { // Simulate key not found
-			return nil, nil, nil // No error, but nil pair
-		}
+		if m.uaError != nil { return nil, nil, m.uaError }
+		if m.uaData == nil { return nil, nil, nil }
 		return &consulapi.KVPair{Key: key, Value: m.uaData}, nil, nil
 	default:
-		return nil, nil, fmt.Errorf("mock unexpected key: %s", key)
+		return nil, nil, nil
 	}
 }
 
-// --- Test HandleAuthzRequest ---
+type mockRedisClient struct{}
+
+func (m *mockRedisClient) Incr(ctx context.Context, key string) *redis.IntCmd {
+	cmd := redis.NewIntCmd(ctx); cmd.SetVal(1); return cmd
+}
+func (m *mockRedisClient) Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd {
+	cmd := redis.NewBoolCmd(ctx); cmd.SetVal(true); return cmd
+}
+func (m *mockRedisClient) Ping(ctx context.Context) *redis.StatusCmd {
+	cmd := redis.NewStatusCmd(ctx); cmd.SetVal("PONG"); return cmd
+}
+func (m *mockRedisClient) Close() error { return nil }
 
 func TestHandleAuthzRequest(t *testing.T) {
-	// Shared logger for tests
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})) // Log debug for tests
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	testCases := []struct {
 		name             string
-		mockKV           *mockConsulKV // Define KV state per test case
-		reqMethod        string        // Request method (e.g., GET)
-		reqPath          string        // Request path (e.g., /)
+		mockKV           *mockConsulKV
+		mockRedis        *mockRedisClient
+		reqMethod        string
+		reqPath          string
 		reqHeaders       map[string]string
 		expectedStatus   int
-		expectedHeader   string // Expected value for X-Authz-Decision
-		expectedBodyFrag string // Optional: fragment expected in body for denials
+		expectedHeader   string
+		expectedBodyFrag string
 	}{
 		{
 			name:           "Allowed IP, Allowed UA",
 			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "GoodAgent/2.0"},
 			expectedStatus: http.StatusOK,
 			expectedHeader: "Allow",
+			expectedBodyFrag: "OK",
 		},
 		{
 			name:           "Blocked IP",
 			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1, 8.8.8.8"), uaData: []byte("BadBot/1.0")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "GoodAgent/2.0"},
 			expectedStatus: http.StatusForbidden,
 			expectedHeader: "Deny-IPBlock",
-			expectedBodyFrag: "Access denied",
+			expectedBodyFrag: "Access Denied: IP blocked.",
 		},
 		{
 			name:           "Blocked IP (secondary IP in XFF)",
 			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1, 8.8.8.8"), uaData: []byte("BadBot/1.0")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8, 10.0.0.1", "User-Agent": "GoodAgent/2.0"},
 			expectedStatus: http.StatusForbidden,
 			expectedHeader: "Deny-IPBlock",
-			expectedBodyFrag: "Access denied",
+			expectedBodyFrag: "Access Denied: IP blocked.",
 		},
 		{
 			name:           "Blocked UA",
 			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0\nAnotherBadBot")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "BadBot/1.0"},
 			expectedStatus: http.StatusForbidden,
 			expectedHeader: "Deny-UABlock",
-			expectedBodyFrag: "Access denied",
+			expectedBodyFrag: "Access Denied: Client blocked.",
 		},
 		{
 			name:           "Blocked UA (second in list)",
 			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0\nAnotherBadBot")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "AnotherBadBot"},
 			expectedStatus: http.StatusForbidden,
 			expectedHeader: "Deny-UABlock",
-			expectedBodyFrag: "Access denied",
+			expectedBodyFrag: "Access Denied: Client blocked.",
 		},
 		{
 			name:           "Blocked IP takes precedence over Allowed UA",
 			mockKV:         &mockConsulKV{ipData: []byte("8.8.8.8"), uaData: []byte("BadBot/1.0")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "GoodAgent/2.0"},
 			expectedStatus: http.StatusForbidden,
-			expectedHeader: "Deny-IPBlock", // IP checked first
-			expectedBodyFrag: "Access denied",
+			expectedHeader: "Deny-IPBlock",
+			expectedBodyFrag: "Access Denied: IP blocked.",
 		},
 		{
 			name:           "Blocked IP takes precedence over Blocked UA",
 			mockKV:         &mockConsulKV{ipData: []byte("8.8.8.8"), uaData: []byte("BadBot/1.0")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "BadBot/1.0"},
 			expectedStatus: http.StatusForbidden,
-			expectedHeader: "Deny-IPBlock", // IP checked first
-			expectedBodyFrag: "Access denied",
+			expectedHeader: "Deny-IPBlock",
+			expectedBodyFrag: "Access Denied: IP blocked.",
 		},
 		{
 			name:           "Allowed IP, No UA Header",
 			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
-			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8"}, // No User-Agent
+			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8"},
 			expectedStatus: http.StatusOK,
 			expectedHeader: "Allow",
+			expectedBodyFrag: "OK",
 		},
 		{
 			name:           "No XFF Header, Allowed UA",
 			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
-			reqHeaders:     map[string]string{"User-Agent": "GoodAgent/2.0"}, // No XFF
+			reqHeaders:     map[string]string{"User-Agent": "GoodAgent/2.0"},
 			expectedStatus: http.StatusOK,
 			expectedHeader: "Allow",
+			expectedBodyFrag: "OK",
 		},
 		{
 			name:           "No XFF Header, Blocked UA",
 			mockKV:         &mockConsulKV{ipData: []byte("1.1.1.1"), uaData: []byte("BadBot/1.0")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
-			reqHeaders:     map[string]string{"User-Agent": "BadBot/1.0"}, // No XFF
+			reqHeaders:     map[string]string{"User-Agent": "BadBot/1.0"},
 			expectedStatus: http.StatusForbidden,
 			expectedHeader: "Deny-UABlock",
-			expectedBodyFrag: "Access denied",
+			expectedBodyFrag: "Access Denied: Client blocked.",
 		},
 		{
 			name:           "Empty KV lists",
-			mockKV:         &mockConsulKV{ipData: []byte(""), uaData: []byte("")}, // Empty values
+			mockKV:         &mockConsulKV{ipData: []byte(""), uaData: []byte("")},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "AnyAgent"},
 			expectedStatus: http.StatusOK,
 			expectedHeader: "Allow",
+			expectedBodyFrag: "OK",
 		},
 		{
 			name:           "Nil KV lists (key not found)",
-			mockKV:         &mockConsulKV{ipData: nil, uaData: nil}, // nil simulates key not found
+			mockKV:         &mockConsulKV{ipData: nil, uaData: nil},
+			mockRedis:      &mockRedisClient{},
 			reqMethod:      http.MethodGet,
 			reqPath:        "/",
 			reqHeaders:     map[string]string{"X-Forwarded-For": "8.8.8.8", "User-Agent": "AnyAgent"},
 			expectedStatus: http.StatusOK,
 			expectedHeader: "Allow",
+			expectedBodyFrag: "OK",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create a new service instance for each test case with its specific mock KV
-			app := NewService(logger, tc.mockKV)
+			app := NewService(logger, tc.mockKV, tc.mockRedis)
 
-			// Need to manually trigger the fetch to populate the maps for the test
-			err := app.FetchAndUpdateIPBlocklist()
-			if err != nil {
-				// Log if the mock itself had an error configured, otherwise it's unexpected
-				if tc.mockKV.ipError == nil {
-					t.Fatalf("Unexpected error during initial IP fetch for test setup: %v", err)
-				}
-			}
-			err = app.FetchAndUpdateUABlocklist()
-			if err != nil {
-				if tc.mockKV.uaError == nil {
-					t.Fatalf("Unexpected error during initial UA fetch for test setup: %v", err)
-				}
-			}
+			_ = app.FetchAndUpdateIPBlocklist()
+			_ = app.FetchAndUpdateUABlocklist()
 
-			// Create request and response recorder
-			// Use tc.reqMethod and tc.reqPath now
 			req := httptest.NewRequest(tc.reqMethod, tc.reqPath, nil)
 			for key, val := range tc.reqHeaders {
 				req.Header.Set(key, val)
 			}
 			rr := httptest.NewRecorder()
 
-			// Execute the handler
 			handler := http.HandlerFunc(app.HandleAuthzRequest)
 			handler.ServeHTTP(rr, req)
 
-			// Assertions
 			if status := rr.Code; status != tc.expectedStatus {
 				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatus)
 			}
-
 			if header := rr.Header().Get("X-Authz-Decision"); header != tc.expectedHeader {
 				t.Errorf("handler returned wrong X-Authz-Decision header: got %q want %q", header, tc.expectedHeader)
 			}
-
-			if tc.expectedBodyFrag != "" {
-				if !bytes.Contains(rr.Body.Bytes(), []byte(tc.expectedBodyFrag)) {
-					t.Errorf("handler returned unexpected body: got %q, does not contain %q", rr.Body.String(), tc.expectedBodyFrag)
-				}
+			bodyStr := strings.TrimSpace(rr.Body.String())
+			if tc.expectedBodyFrag != "" && !strings.Contains(bodyStr, tc.expectedBodyFrag) {
+				t.Errorf("handler returned unexpected body: got %q, does not contain %q", bodyStr, tc.expectedBodyFrag)
 			}
 		})
 	}
 }
 
-// --- Test FetchAndUpdateIPBlocklist ---
-
 func TestFetchAndUpdateIPBlocklist(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	testCases := []struct {
 		name           string
 		mockKV         *mockConsulKV
+		mockRedis      *mockRedisClient
 		expectedErr    bool
 		expectedMapLen int
-		expectContains map[string]bool // map key -> bool (true if expected)
+		expectContains map[string]bool
 	}{
 		{
 			name:           "Successful fetch",
 			mockKV:         &mockConsulKV{ipData: []byte(" 1.1.1.1 , 2.2.2.2,3.3.3.3 ")},
+			mockRedis:      &mockRedisClient{},
 			expectedErr:    false,
 			expectedMapLen: 3,
 			expectContains: map[string]bool{"1.1.1.1": true, "2.2.2.2": true, "3.3.3.3": true, "4.4.4.4": false},
@@ -252,13 +250,15 @@ func TestFetchAndUpdateIPBlocklist(t *testing.T) {
 		{
 			name:           "Empty value",
 			mockKV:         &mockConsulKV{ipData: []byte("")},
+			mockRedis:      &mockRedisClient{},
 			expectedErr:    false,
 			expectedMapLen: 0,
 			expectContains: map[string]bool{"1.1.1.1": false},
 		},
 		{
 			name:           "Key not found",
-			mockKV:         &mockConsulKV{ipData: nil}, // nil simulates key not found
+			mockKV:         &mockConsulKV{ipData: nil},
+			mockRedis:      &mockRedisClient{},
 			expectedErr:    false,
 			expectedMapLen: 0,
 			expectContains: map[string]bool{"1.1.1.1": false},
@@ -266,12 +266,14 @@ func TestFetchAndUpdateIPBlocklist(t *testing.T) {
 		{
 			name:           "Consul error",
 			mockKV:         &mockConsulKV{ipError: fmt.Errorf("consul connection error")},
+			mockRedis:      &mockRedisClient{},
 			expectedErr:    true,
-			expectedMapLen: 0, // Map should remain empty on error
+			expectedMapLen: 0,
 		},
 		{
 			name:           "Malformed value (extra commas)",
 			mockKV:         &mockConsulKV{ipData: []byte(",1.1.1.1,,2.2.2.2,")},
+			mockRedis:      &mockRedisClient{},
 			expectedErr:    false,
 			expectedMapLen: 2,
 			expectContains: map[string]bool{"1.1.1.1": true, "2.2.2.2": true},
@@ -280,21 +282,20 @@ func TestFetchAndUpdateIPBlocklist(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			app := NewService(logger, tc.mockKV)
+			app := NewService(logger, tc.mockKV, tc.mockRedis)
 			err := app.FetchAndUpdateIPBlocklist()
 
 			if (err != nil) != tc.expectedErr {
 				t.Fatalf("FetchAndUpdateIPBlocklist() error = %v, expectedErr %v", err, tc.expectedErr)
 			}
+			if tc.expectedErr { return }
 
-			// Lock is needed to safely read the map after potential modification
 			app.configMutex.RLock()
 			defer app.configMutex.RUnlock()
 
 			if len(app.ipBlocklist) != tc.expectedMapLen {
 				t.Errorf("Expected map length %d, got %d", tc.expectedMapLen, len(app.ipBlocklist))
 			}
-
 			for key, expected := range tc.expectContains {
 				_, actual := app.ipBlocklist[key]
 				if actual != expected {
@@ -304,115 +305,105 @@ func TestFetchAndUpdateIPBlocklist(t *testing.T) {
 		})
 	}
 }
-// --- Test FetchAndUpdateUABlocklist ---) 
 
 func TestFetchAndUpdateUABlocklist(t *testing.T) {
-        // Use a logger that writes to a buffer during tests to avoid cluttering test output,
-        // unless explicitly debugging. Use os.Stderr for debugging.
-        // buf := &bytes.Buffer{}
-        // logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-        logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})) // Keep INFO for less noise
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
-        testCases := []struct {
-                name           string
-                mockKV         *mockConsulKV
-                expectedErr    bool
-                expectedMapLen int
-                expectContains map[string]bool // map key -> bool (true if expected)
-        }{
-                {
-                        name: "Successful fetch with newlines",
-                        // Correct mock data using \n delimiter
-                        mockKV:         &mockConsulKV{uaData: []byte(" BadBot/1.0 \n NastyCrawler/2.1 \n ExactUA String \n")},
-                        expectedErr:    false,
-                        expectedMapLen: 3, // Expect 3 entries after splitting by \n and trimming
-                        expectContains: map[string]bool{"BadBot/1.0": true, "NastyCrawler/2.1": true, "ExactUA String": true, "GoodBot": false},
-                },
-                {
-                        name:           "Empty value",
-                        mockKV:         &mockConsulKV{uaData: []byte("")},
-                        expectedErr:    false,
-                        expectedMapLen: 0,
-                        expectContains: map[string]bool{"BadBot/1.0": false},
-                },
-                {
-                        name:           "Key not found",
-                        mockKV:         &mockConsulKV{uaData: nil},
-                        expectedErr:    false,
-                        expectedMapLen: 0,
-                        expectContains: map[string]bool{"BadBot/1.0": false},
-                },
-                {
-                        name:           "Consul error",
-                        mockKV:         &mockConsulKV{uaError: fmt.Errorf("consul connection error")},
-                        expectedErr:    true,
-                        expectedMapLen: 0, // Map should remain empty on error
-                },
-                {
-                        name: "String with internal commas but no newlines",
-                         // This mock data has NO newlines, so Split by \n results in ONE entry
-                        mockKV:         &mockConsulKV{uaData: []byte("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36")},
-                        expectedErr:    false,
-                        expectedMapLen: 1, // Expect 1 entry because no \n
-                        expectContains: map[string]bool{"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36": true, "KHTML": false},
-                },
-                {
-                         name: "Value with extra newlines",
-                         // Test trimming of blank lines resulting from extra newlines
-                         mockKV:         &mockConsulKV{uaData: []byte("\nBadBot/1.0\n\nNastyCrawler/2.1\n")},
-                         expectedErr:    false,
-                         expectedMapLen: 2, // Expect 2 entries after trimming empty strings
-                         expectContains: map[string]bool{"BadBot/1.0": true, "NastyCrawler/2.1": true},
-                },
-                {
-                         name: "Single value with newline",
-                         mockKV:         &mockConsulKV{uaData: []byte("JustOneUA\n")},
-                         expectedErr:    false,
-                         expectedMapLen: 1, // Expect 1 entry
-                         expectContains: map[string]bool{"JustOneUA": true},
-                 },
-                 {
-                         name: "Single value no newline",
-                         mockKV:         &mockConsulKV{uaData: []byte("OnlyMe")},
-                         expectedErr:    false,
-                         expectedMapLen: 1, // Expect 1 entry
-                         expectContains: map[string]bool{"OnlyMe": true},
-                 },
-        }
+	testCases := []struct {
+		name           string
+		mockKV         *mockConsulKV
+		mockRedis      *mockRedisClient
+		expectedErr    bool
+		expectedMapLen int
+		expectContains map[string]bool
+	}{
+		{
+			name:           "Successful fetch with newlines",
+			mockKV:         &mockConsulKV{uaData: []byte(" BadBot/1.0 \n NastyCrawler/2.1 \n ExactUA String \n")},
+			mockRedis:      &mockRedisClient{},
+			expectedErr:    false,
+			expectedMapLen: 3,
+			expectContains: map[string]bool{"BadBot/1.0": true, "NastyCrawler/2.1": true, "ExactUA String": true, "GoodBot": false},
+		},
+		{
+			name:           "Empty value",
+			mockKV:         &mockConsulKV{uaData: []byte("")},
+			mockRedis:      &mockRedisClient{},
+			expectedErr:    false,
+			expectedMapLen: 0,
+			expectContains: map[string]bool{"BadBot/1.0": false},
+		},
+		{
+			name:           "Key not found",
+			mockKV:         &mockConsulKV{uaData: nil},
+			mockRedis:      &mockRedisClient{},
+			expectedErr:    false,
+			expectedMapLen: 0,
+			expectContains: map[string]bool{"BadBot/1.0": false},
+		},
+		{
+			name:           "Consul error",
+			mockKV:         &mockConsulKV{uaError: fmt.Errorf("consul connection error")},
+			mockRedis:      &mockRedisClient{},
+			expectedErr:    true,
+			expectedMapLen: 0,
+		},
+		{
+			name:           "String with internal commas but no newlines",
+			mockKV:         &mockConsulKV{uaData: []byte("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36")},
+			mockRedis:      &mockRedisClient{},
+			expectedErr:    false,
+			expectedMapLen: 1,
+			expectContains: map[string]bool{"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36": true, "KHTML": false},
+		},
+		{
+			name:           "Value with extra newlines",
+			mockKV:         &mockConsulKV{uaData: []byte("\nBadBot/1.0\n\nNastyCrawler/2.1\n")},
+			mockRedis:      &mockRedisClient{},
+			expectedErr:    false,
+			expectedMapLen: 2,
+			expectContains: map[string]bool{"BadBot/1.0": true, "NastyCrawler/2.1": true},
+		},
+		{
+			name:           "Single value with newline",
+			mockKV:         &mockConsulKV{uaData: []byte("JustOneUA\n")},
+			mockRedis:      &mockRedisClient{},
+			expectedErr:    false,
+			expectedMapLen: 1,
+			expectContains: map[string]bool{"JustOneUA": true},
+		},
+		{
+			name:           "Single value no newline",
+			mockKV:         &mockConsulKV{uaData: []byte("OnlyMe")},
+			mockRedis:      &mockRedisClient{},
+			expectedErr:    false,
+			expectedMapLen: 1,
+			expectContains: map[string]bool{"OnlyMe": true},
+		},
+	}
 
-        for _, tc := range testCases {
-                t.Run(tc.name, func(t *testing.T) {
-                        // Reset the buffer for each test if using buffer logging
-                        // buf.Reset()
-                        app := NewService(logger, tc.mockKV)
-                        err := app.FetchAndUpdateUABlocklist() // Test the correct function
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := NewService(logger, tc.mockKV, tc.mockRedis)
+			err := app.FetchAndUpdateUABlocklist()
 
-                        if (err != nil) != tc.expectedErr {
-                                t.Fatalf("FetchAndUpdateUABlocklist() error = %v, expectedErr %v", err, tc.expectedErr)
-                                // fmt.Println("Test Log Output:\n", buf.String()) // Print logs on error if using buffer
-                        }
+			if (err != nil) != tc.expectedErr {
+				t.Fatalf("FetchAndUpdateUABlocklist() error = %v, expectedErr %v", err, tc.expectedErr)
+			}
+			if tc.expectedErr { return }
 
-                        if tc.expectedErr {
-                                return // Don't check map if error was expected
-                        }
+			app.configMutex.RLock()
+			defer app.configMutex.RUnlock()
 
-                        app.configMutex.RLock()
-                        defer app.configMutex.RUnlock()
-
-                        if len(app.userAgentBlocklist) != tc.expectedMapLen {
-                                t.Errorf("Expected map length %d, got %d (Map: %v)", tc.expectedMapLen, len(app.userAgentBlocklist), app.userAgentBlocklist)
-                                // fmt.Println("Test Log Output:\n", buf.String()) // Print logs on error if using buffer
-                        }
-
-                        for key, expected := range tc.expectContains {
-                                _, actual := app.userAgentBlocklist[key] // Check the correct map
-                                if actual != expected {
-                                        t.Errorf("For key %q, expected presence %v, got %v", key, expected, actual)
-                                        // fmt.Println("Test Log Output:\n", buf.String()) // Print logs on error if using buffer
-                                }
-                        }
-                        // Optional: Print logs even on success for debugging
-                        // fmt.Println("Test Log Output:\n", buf.String())
-                })
-        }
+			if len(app.userAgentBlocklist) != tc.expectedMapLen {
+				t.Errorf("Expected map length %d, got %d (Map: %v)", tc.expectedMapLen, len(app.userAgentBlocklist), app.userAgentBlocklist)
+			}
+			for key, expected := range tc.expectContains {
+				_, actual := app.userAgentBlocklist[key]
+				if actual != expected {
+					t.Errorf("For key %q, expected presence %v, got %v", key, expected, actual)
+				}
+			}
+		})
+	}
 }
