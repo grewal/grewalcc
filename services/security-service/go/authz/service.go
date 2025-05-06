@@ -37,6 +37,7 @@ type redisClientInterface interface {
 	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
 	Ping(ctx context.Context) *redis.StatusCmd
 	Close() error
+	Pipeline() redis.Pipeliner
 }
 
 type Service struct {
@@ -142,9 +143,7 @@ func (s *Service) FetchAndUpdateRateLimitConfig() error {
 
 func (s *Service) FetchAndUpdateIPBlocklist() error {
 	kvPair, _, err := s.consulKV.Get(ipBlocklistKVKey, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get ip_blocklist from consul: %w", err)
-	}
+	if err != nil { return fmt.Errorf("failed to get ip_blocklist from consul: %w", err) }
 	if kvPair == nil || len(kvPair.Value) == 0 {
 		s.logger.Info("IP blocklist key not found or empty in Consul KV.", "key", ipBlocklistKVKey)
 		s.configMutex.Lock()
@@ -152,30 +151,23 @@ func (s *Service) FetchAndUpdateIPBlocklist() error {
 		s.configMutex.Unlock()
 		return nil
 	}
-
 	ips := strings.Split(string(kvPair.Value), ",")
 	newBlocklist := make(map[string]struct{}, len(ips))
 	ipCount := 0
 	for _, ip := range ips {
 		trimmedIP := strings.TrimSpace(ip)
-		if trimmedIP != "" {
-			newBlocklist[trimmedIP] = struct{}{}
-			ipCount++
-		}
+		if trimmedIP != "" { newBlocklist[trimmedIP] = struct{}{}; ipCount++ }
 	}
-
 	s.configMutex.Lock()
 	s.ipBlocklist = newBlocklist
 	s.configMutex.Unlock()
 	s.logger.Debug("Updated IP blocklist", "source", "Consul KV", "parsed_ips", ipCount)
-	return nil // Ensure return nil on success
+	return nil
 }
 
 func (s *Service) FetchAndUpdateUABlocklist() error {
 	kvPair, _, err := s.consulKV.Get(uaBlocklistKVKey, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get ua_blocklist from consul: %w", err)
-	}
+	if err != nil { return fmt.Errorf("failed to get ua_blocklist from consul: %w", err) }
 	if kvPair == nil || len(kvPair.Value) == 0 {
 		s.logger.Info("User-Agent blocklist key not found or empty in Consul KV.", "key", uaBlocklistKVKey)
 		s.configMutex.Lock()
@@ -183,33 +175,28 @@ func (s *Service) FetchAndUpdateUABlocklist() error {
 		s.configMutex.Unlock()
 		return nil
 	}
-
 	userAgents := strings.Split(string(kvPair.Value), "\n")
 	newBlocklist := make(map[string]struct{}, len(userAgents))
 	uaCount := 0
 	for _, ua := range userAgents {
 		trimmedUA := strings.TrimSpace(ua)
-		if trimmedUA != "" {
-			newBlocklist[trimmedUA] = struct{}{}
-			uaCount++
-		}
+		if trimmedUA != "" { newBlocklist[trimmedUA] = struct{}{}; uaCount++ }
 	}
-
 	s.configMutex.Lock()
 	s.userAgentBlocklist = newBlocklist
 	s.configMutex.Unlock()
 	s.logger.Debug("Updated User-Agent blocklist", "source", "Consul KV", "parsed_uas", uaCount)
-	return nil // Ensure return nil on success
+	return nil
 }
 
 func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	xff := r.Header.Get("X-Forwarded-For")
 	clientIP := ""
 	if xff != "" {
 		ips := strings.Split(xff, ",")
-		if len(ips) > 0 {
-			clientIP = strings.TrimSpace(ips[0])
-		}
+		if len(ips) > 0 { clientIP = strings.TrimSpace(ips[0]) }
 	}
 	userAgent := r.Header.Get("User-Agent")
 
@@ -222,11 +209,17 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 
 	s.logger.Debug("Received authz request", logAttrs...)
 
-	s.configMutex.RLock() // Use Read Lock for checking rules
-	defer s.configMutex.RUnlock()
+	// Read lock needed for blocklists AND rate limit config
+	s.configMutex.RLock()
+	// Read rate limit config needed later *before* releasing lock if possible
+	isEnabled := s.rateLimitEnabled
+	limit := s.rateLimitCount
+	window := s.rateLimitWindow
 
+	// 1. Check IP Blocklist
 	if clientIP != "" {
 		if _, blocked := s.ipBlocklist[clientIP]; blocked {
+			s.configMutex.RUnlock() // Release lock before writing response
 			s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "ip_blocklist"))...)
 			w.Header().Set("X-Authz-Decision", "Deny-IPBlock")
 			w.WriteHeader(http.StatusForbidden)
@@ -235,8 +228,10 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 2. Check User-Agent Blocklist
 	if userAgent != "" {
 		if _, blocked := s.userAgentBlocklist[userAgent]; blocked {
+			s.configMutex.RUnlock() // Release lock before writing response
 			s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "ua_blocklist"))...)
 			w.Header().Set("X-Authz-Decision", "Deny-UABlock")
 			w.WriteHeader(http.StatusForbidden)
@@ -245,20 +240,55 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- Placeholder for Rate Limit Check (To be added later) ---
-	// Read config safely (already under RLock):
-	// isEnabled := s.rateLimitEnabled
-	// limit := s.rateLimitCount
-	// window := s.rateLimitWindow
-	//
-	// if isEnabled && clientIP != "" {
-	//    // Build Redis key: e.g., "ratelimit:" + clientIP
-	//    // Use s.redisClient.Incr(ctx, key)
-	//    // Use s.redisClient.Expire(ctx, key, window) - only on first incr? Use pipeline?
-	//    // Check result against limit
-	//    // If over limit: deny with 429
-	// }
+	// Config values (isEnabled, limit, window) already read under RLock
 
+	if isEnabled && clientIP != "" {
+		s.configMutex.RUnlock() // Release RLock before potentially slow Redis call
+
+		redisKey := "ratelimit:" + clientIP
+		var currentCount int64 = 0 // Initialize count
+
+		// Use pipeline for INCR + EXPIRE
+		pipe := s.redisClient.Pipeline()
+		incrCmd := pipe.Incr(ctx, redisKey)
+		pipe.Expire(ctx, redisKey, window) // Set expiry every time for simplicity
+		_, execErr := pipe.Exec(ctx)
+
+		if execErr != nil {
+			// Log Redis error but allow the request (fail open for rate limiting part)
+			s.logger.Error("Redis pipeline failed for rate limit check", append(logAttrs, slog.String("key", redisKey), slog.String("error", execErr.Error()))...)
+			// Do not return; proceed to allow
+		} else {
+			// Pipeline executed, now get the result of INCR
+			countResult, incrErr := incrCmd.Result()
+			if incrErr != nil {
+				// Log error getting INCR result but allow request
+				s.logger.Error("Redis INCR command failed within pipeline", append(logAttrs, slog.String("key", redisKey), slog.String("error", incrErr.Error()))...)
+				// Do not return; proceed to allow
+			} else {
+				// Successfully got the count after incrementing
+				currentCount = countResult
+				logAttrs = append(logAttrs, slog.Int64("rl_count", currentCount), slog.Int64("rl_limit", limit)) // Add context for logging
+
+				if currentCount > limit {
+					// Rate limit exceeded
+					s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "rate_limit"))...)
+					w.Header().Set("X-Authz-Decision", "Deny-RateLimit")
+					w.Header().Set("Retry-After", fmt.Sprintf("%d", int(window.Seconds()))) // Optional: Inform client
+					w.WriteHeader(http.StatusTooManyRequests)                             // 429
+					fmt.Fprintln(w, "Rate limit exceeded.")
+					return // DENY the request
+				}
+				// Rate limit check passed
+				s.logger.Debug("Rate limit check passed", logAttrs...)
+			}
+		}
+	} else {
+		// Rate limiting disabled or no client IP, release lock if not already done
+		s.configMutex.RUnlock()
+	}
+
+	// Allow if no checks failed and rate limit (if enabled) passed or failed open
 	s.logger.Info("Request allowed", logAttrs...)
 	w.Header().Set("X-Authz-Decision", "Allow")
 	w.WriteHeader(http.StatusOK)
