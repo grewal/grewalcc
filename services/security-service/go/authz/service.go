@@ -10,7 +10,17 @@ import (
 	"time" // Needed for interface method signatures
 
 	consulapi "github.com/hashicorp/consul/api"
-	"github.com/redis/go-redis/v9" // Import added
+	"github.com/redis/go-redis/v9"
+)
+
+// Define constants for Consul KV keys
+const (
+	ipBlocklistKVKey = "config/security/ip_blocklist"
+	uaBlocklistKVKey = "config/security/ua_blocklist"
+	// Add rate limit keys later:
+	// rateLimitEnabledKey      = "config/security/ratelimit/enabled"
+	// rateLimitLimitPerWindowKey = "config/security/ratelimit/limit_per_window"
+	// rateLimitWindowSecondsKey  = "config/security/ratelimit/window_seconds"
 )
 
 // consulKV defines the minimal interface needed for interacting with Consul KV.
@@ -25,47 +35,44 @@ type redisClientInterface interface {
 	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
 	Ping(ctx context.Context) *redis.StatusCmd // For potential internal health checks
 	Close() error                             // For graceful shutdown
-	// Add other methods ONLY if authz.Service directly uses them later
 }
 
 // Service holds the dependencies and state for the authorization service.
 type Service struct {
 	logger             *slog.Logger
 	consulKV           consulKV             // Interface for Consul KV access
-	redisClient        redisClientInterface
+	redisClient        redisClientInterface // Use the interface type
 	ipBlocklist        map[string]struct{}
 	userAgentBlocklist map[string]struct{}
 	configMutex        sync.RWMutex
+	// Future: Add fields for rate limit config (enabled, limit, window)
 }
 
 // NewService creates a new authorization service instance.
-func NewService(logger *slog.Logger, kv consulKV, rdb redisClientInterface) *Service {
+func NewService(logger *slog.Logger, kv consulKV, rdb redisClientInterface) *Service { // Accept interface
 	return &Service{
 		logger:             logger.With("component", "authz_service"),
 		consulKV:           kv,
-		redisClient:        rdb,
+		redisClient:        rdb, // Store the provided client (interface)
 		ipBlocklist:        make(map[string]struct{}),
 		userAgentBlocklist: make(map[string]struct{}),
-		// Initialize rate limit config fields later
 	}
 }
 
 // FetchAndUpdateIPBlocklist fetches the IP blocklist from Consul KV and updates the in-memory map.
 func (s *Service) FetchAndUpdateIPBlocklist() error {
-	kvPair, _, err := s.consulKV.Get("config/security/ip_blocklist", nil)
+	kvPair, _, err := s.consulKV.Get(ipBlocklistKVKey, nil)
 	if err != nil {
 		return fmt.Errorf("failed to get ip_blocklist from consul: %w", err)
 	}
 	if kvPair == nil || len(kvPair.Value) == 0 {
-		s.logger.Info("IP blocklist key not found or empty in Consul KV.")
-		// Clear the current blocklist if the key is gone/empty
+		s.logger.Info("IP blocklist key not found or empty in Consul KV.", "key", ipBlocklistKVKey)
 		s.configMutex.Lock()
 		s.ipBlocklist = make(map[string]struct{})
 		s.configMutex.Unlock()
 		return nil
 	}
 
-	// Assuming value is comma-separated IPs
 	ips := strings.Split(string(kvPair.Value), ",")
 	newBlocklist := make(map[string]struct{}, len(ips))
 	ipCount := 0
@@ -86,19 +93,18 @@ func (s *Service) FetchAndUpdateIPBlocklist() error {
 
 // FetchAndUpdateUABlocklist fetches the User-Agent blocklist from Consul KV.
 func (s *Service) FetchAndUpdateUABlocklist() error {
-	kvPair, _, err := s.consulKV.Get("config/security/ua_blocklist", nil)
+	kvPair, _, err := s.consulKV.Get(uaBlocklistKVKey, nil)
 	if err != nil {
 		return fmt.Errorf("failed to get ua_blocklist from consul: %w", err)
 	}
 	if kvPair == nil || len(kvPair.Value) == 0 {
-		s.logger.Info("User-Agent blocklist key not found or empty in Consul KV.")
+		s.logger.Info("User-Agent blocklist key not found or empty in Consul KV.", "key", uaBlocklistKVKey)
 		s.configMutex.Lock()
 		s.userAgentBlocklist = make(map[string]struct{})
 		s.configMutex.Unlock()
 		return nil
 	}
 
-	// Assuming value is newline-separated User-Agents
 	userAgents := strings.Split(string(kvPair.Value), "\n")
 	newBlocklist := make(map[string]struct{}, len(userAgents))
 	uaCount := 0
@@ -119,13 +125,13 @@ func (s *Service) FetchAndUpdateUABlocklist() error {
 
 // HandleAuthzRequest is the HTTP handler for Envoy's external authorization check.
 func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
-	// Extract relevant headers (handle potential multiple XFF entries)
+	// Extract relevant headers
 	xff := r.Header.Get("X-Forwarded-For")
 	clientIP := ""
 	if xff != "" {
 		ips := strings.Split(xff, ",")
 		if len(ips) > 0 {
-			clientIP = strings.TrimSpace(ips[0]) // Get the first (presumably originating) IP
+			clientIP = strings.TrimSpace(ips[0])
 		}
 	}
 	userAgent := r.Header.Get("User-Agent")
@@ -148,7 +154,8 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 	if clientIP != "" {
 		if _, blocked := s.ipBlocklist[clientIP]; blocked {
 			s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "ip_blocklist"))...)
-			w.WriteHeader(http.StatusForbidden) // Deny
+			w.Header().Set("X-Authz-Decision", "Deny-IPBlock") 
+			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprintln(w, "Access Denied: IP blocked.")
 			return
 		}
@@ -158,25 +165,18 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 	if userAgent != "" {
 		if _, blocked := s.userAgentBlocklist[userAgent]; blocked {
 			s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "ua_blocklist"))...)
-			w.WriteHeader(http.StatusForbidden) // Deny
+			w.Header().Set("X-Authz-Decision", "Deny-UABlock")
+			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprintln(w, "Access Denied: Client blocked.")
 			return
 		}
 	}
 
-	// --- Placeholder for Rate Limit Check (To be added later) ---
-	// if s.rateLimitEnabled { // Example structure
-	//    // Check rate limit using s.redisClient
-	//    // If over limit:
-	//    // s.logger.Warn("Request denied", append(logAttrs, slog.String("reason", "rate_limit"))...)
-	//    // w.WriteHeader(http.StatusTooManyRequests) // Deny 429
-	//    // fmt.Fprintln(w, "Rate limit exceeded.")
-	//    // return
-	// }
-	// --- End Placeholder ---
+	// if s.rateLimitEnabled { ... }
 
 	// Allow if no checks failed
 	s.logger.Info("Request allowed", logAttrs...)
-	w.WriteHeader(http.StatusOK) // Allow
+	w.Header().Set("X-Authz-Decision", "Allow")
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprintln(w, "OK")
 }
