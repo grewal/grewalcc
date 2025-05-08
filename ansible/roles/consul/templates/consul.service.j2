@@ -18,7 +18,7 @@ ExecStartPre=-/usr/bin/docker rm consul-server
 ExecStart=/usr/bin/docker run --rm --network host --name consul-server \
   -v /etc/consul.d:/etc/consul.d:ro \
   -v /opt/consul/data:/consul/data \
-  hashicorp/consul:1.20.5 agent -config-dir=/etc/consul.d
+  hashicorp/consul:1.21 agent -config-dir=/etc/consul.d
 
 # Stop the container gracefully
 ExecStop=/usr/bin/docker stop consul-server
