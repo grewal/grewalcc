@@ -1,7 +1,13 @@
 ---
-- name: Reload systemd and restart consul # This name MUST match the notify: in the task
+# handlers/main.yml for consul role
+
+- name: Reload systemd daemon
   ansible.builtin.systemd:
-    name: consul
+    daemon_reload: yes
+  become: yes
+
+- name: Restart consul service
+  ansible.builtin.systemd:
+    name: consul.service # Explicitly use .service suffix
     state: restarted
-    daemon_reload: yes # Combine daemon-reload and restart
   become: yes
