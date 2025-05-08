@@ -8,12 +8,13 @@
     - vars/secrets.yml
 
   roles:
-    - node_exporter
-    - prometheus
-    # - grafana # Removed - will run locally via SSH tunnel
+    #- node_exporter
+    #- prometheus
+    # - grafana # (Memory constraint) run locally via SSH tunnel
     - consul
-    - role: redis
+    - redis
     - authz_service
+    #- redis_exporter
     - envoy
     - grewal-backend
 

@@ -28,12 +28,14 @@
     state: started         # Ensure container is running
     pull: true             # Always attempt to pull the specified image tag
     recreate: true         # Recreate container if image or config differs from definition
-    network_mode: host     # Use host networking
+    network_mode: grewalnet 
+    ports:
+      - "9001:9001"
     restart_policy: always # Automatically restart if it stops/crashes
     env:                   # Environment variables
-      CONSUL_HTTP_ADDR: "127.0.0.1:8500"
+      CONSUL_HTTP_ADDR: "{{ consul_host_ip }}:8500"
       LISTEN_ADDR: ":{{ authz_service_listen_port | default(9001) }}"
-      REDIS_ADDR: "{{ authz_service_redis_addr | default('127.0.0.1:6379') }}"
+      REDIS_ADDR: "redis-server:{{ redis_port | default(6379) }}"
       REDIS_PASSWORD: "{{ redis_password }}"
     labels:
       service: authz-service

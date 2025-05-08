@@ -31,11 +31,11 @@
                            # Essential for applying updates correctly.
     restart_policy: always # Tells the Docker daemon to automatically restart the container
                            # if it stops for any reason (crash, host reboot).
+    networks: 
+      - name: "grewalnet"
     timeout: 120
+   
     # --- Container Configuration ---
-    network_mode: host     # Use the host's network stack. Makes Redis accessible on
-                           # 127.0.0.1:6379 from other services on the same host easily.
-    
     entrypoint: /usr/local/bin/redis-server
 
     # --- Provide arguments directly to redis-server via 'command' (as a LIST) ---
@@ -44,15 +44,12 @@
       - ""
       - "--appendonly"
       - "no"
-   
-   
-      # command: >             # The command to run inside the container to start Redis.
-      #/usr/local/bin/redis-server         # The Redis executable.
-      #--save ""            # Disables RDB snapshotting (no automatic saves to disk).
-      #--appendonly no      # Disables AOF persistence (no command logging to disk).
+      - "--requirepass"
+      - "{{ redis_password_resolved }}"
     
-    # volumes:             # We are intentionally *not* mounting volumes for now
+    # volumes:
     #   - "{{ redis_data_dir_host }}:/data" # to disable disk persistence.
+    
     labels:
       service: redis
       managed_by: ansible
