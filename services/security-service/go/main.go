@@ -13,6 +13,7 @@ import (
 	"time"
 
 	consulapi "github.com/hashicorp/consul/api"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"grewal.cc/services/security-service/go/authz"
@@ -132,6 +133,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", app.HandleAuthzRequest)
 	mux.HandleFunc("/healthz", handleHealthz(consulClient))
+	mux.Handle("/metrics", promhttp.Handler())
+
 	server := &http.Server{
 		Addr:         listenAddr,
 		Handler:      mux,
