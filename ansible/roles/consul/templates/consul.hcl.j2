@@ -26,9 +26,15 @@ ui_config {
   enabled = true
 }
 
+# Enable Consul Connect
+connect {
+  enabled = true
+}
+
 # Enable DNS Interface on standard port 8600 (UDP/TCP)
 ports {
   dns = 8600
+  grpc = 8502 // For xDS communication with Envoy
 }
 
 # Note: HTTP API defaults to 8500
