@@ -19,7 +19,7 @@ limits {
 # Host networking configuration - use the internal IP variable
 bind_addr = "{{ consul_host_ip }}"
 advertise_addr = "{{ consul_host_ip }}"
-client_addr = "{{ consul_host_ip }}"
+client_addr = "0.0.0.0"
 
 # Enable UI
 ui_config {
