@@ -1,8 +1,8 @@
-# {{ ansible_managed }} - Template: ~/src/gcc-ansible-wsl/ansible/roles/envoy/templates/envoy.service.j2
+# {{ ansible_managed }}
 [Unit]
 Description=Envoy Proxy Container (Host Network)
-Requires=docker.service network-online.target consul.service
-After=docker.service network-online.target consul.service
+Requires=docker.service network-online.target consul.service dnsmasq.service
+After=docker.service network-online.target consul.service dnsmasq.service
 
 [Service]
 Restart=always
@@ -15,11 +15,22 @@ ExecStartPre=-/bin/mkdir -p /etc/envoy
 ExecStartPre=-/usr/bin/docker stop envoy-svc
 ExecStartPre=-/usr/bin/docker rm envoy-svc
 
-# Pull the specified image (optional)
+# Pull the specified image
 ExecStartPre=-/usr/bin/docker pull {{ envoy_image_repository }}:{{ envoy_image_tag }}
 
 # Run the Envoy container using host networking - All on one line
-ExecStart=/usr/bin/docker run --rm --network host --name envoy-svc -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro {{ envoy_image_repository }}:{{ envoy_image_tag }} -c /etc/envoy/envoy.yaml
+# Added -u root, --entrypoint, --cap-add, and other necessary args
+ExecStart=/usr/bin/docker run --rm --network host --name envoy-svc \
+  -u root \
+  --entrypoint "/usr/local/bin/envoy" \
+  --cap-add=NET_BIND_SERVICE \
+  -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro \
+  -v /etc/letsencrypt:/etc/letsencrypt:ro \
+  {{ envoy_image_repository }}:{{ envoy_image_tag }} \
+  -c /etc/envoy/envoy.yaml \
+  --service-node edge-envoy-instance-1 \
+  --service-cluster grewalcc_services
+
 
 # Stop the container gracefully
 ExecStop=/usr/bin/docker stop envoy-svc
