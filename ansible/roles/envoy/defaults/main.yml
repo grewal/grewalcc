@@ -8,4 +8,4 @@ envoy_image_repository: "envoyproxy/envoy"
 envoy_admin_address: "127.0.0.1"
 envoy_admin_port: 9901
 envoy_listener_address: "0.0.0.0"
-envoy_listener_port: 8888
+envoy_listener_port: 443
