@@ -48,11 +48,14 @@
 - name: Validate Envoy configuration using target Envoy image
   ansible.builtin.command:
     cmd: >-
-      docker run --rm
+      docker run --rm --network host -u root
+      --entrypoint "/usr/local/bin/envoy"
+      --cap-add=NET_BIND_SERVICE
       -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      -v /etc/letsencrypt:/etc/letsencrypt:ro
       {{envoy_image_repository}}:{{envoy_image_tag}}
       --mode validate -c /etc/envoy/envoy.yaml
-  # No become needed if ansible_user is in docker group
+  become: yes
   register: envoy_validate_result
   changed_when: false
   failed_when: envoy_validate_result.rc != 0
