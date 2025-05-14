@@ -48,7 +48,8 @@
 - name: Validate Envoy configuration using target Envoy image
   ansible.builtin.command:
     cmd: >-
-      docker run --rm
+      docker run --rm --network host -u root
+      -v /etc/letsencrypt:/etc/letsencrypt:ro
       -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
       {{envoy_image_repository}}:{{envoy_image_tag}}
       --mode validate -c /etc/envoy/envoy.yaml
