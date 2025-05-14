@@ -8,18 +8,30 @@ admin:
 
 static_resources:
   listeners:
-    - name: listener_0
+    - name: listener_https_main
       address:
         socket_address:
           address: "{{envoy_listener_address}}"
           port_value: {{envoy_listener_port}}
       filter_chains:
-        - filters:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": |-
+                type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain:
+                      filename: "/etc/letsencrypt/live/grewal.cc/fullchain.pem"
+                    private_key:
+                      filename: "/etc/letsencrypt/live/grewal.cc/privkey.pem"
+                alpn_protocols: ["h2", "http/1.1"]
+          filters:
             - name: envoy.filters.network.http_connection_manager
               typed_config:
                 "@type": |-
                   type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                stat_prefix: ingress_http
+                stat_prefix: ingress_https
                 use_remote_address: false
                 xff_num_trusted_hops: 1
                 common_http_protocol_options:
@@ -36,11 +48,12 @@ static_resources:
                             [%START_TIME%] "%REQ(:METHOD)% \
                             %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" \
                             %RESPONSE_CODE% %RESPONSE_FLAGS% \
-                            UpstreamHost=%UPSTREAM_HOST% Duration=%DURATION%ms \
+                            UpstreamHost=%UPSTREAM_HOST% \
+                            Duration=%DURATION%ms \
                             XFF=[%REQ(x-forwarded-for)%] \
-                            UserAgent=[%REQ(user-agent)%] \
-                            ContentType=[%REQ(content-type)%] \
-                            Authority=[%REQ(:authority)%]
+                            UA=[%REQ(user-agent)%] \
+                            CT=[%REQ(content-type)%] \
+                            Auth=[%REQ(:authority)%]
                 http_filters:
                   - name: envoy.filters.http.ext_authz
                     typed_config:
@@ -53,7 +66,9 @@ static_resources:
                         allow_partial_message: true
                       http_service:
                         server_uri:
-                          uri: http://127.0.0.1:9001
+                          uri: |-
+                            http://127.0.0.1:
+                              {{authz_service_port | default(9001)}}
                           cluster: authz_cluster
                           timeout: 0.2s
                         path_prefix: "/authz"
@@ -79,15 +94,70 @@ static_resources:
                       "@type": |-
                         type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
                 route_config:
-                  name: local_route
+                  name: grewalcc_website_routes
                   virtual_hosts:
-                    - name: local_service
+                    - name: grewal_cc_virtual_host
+                      domains: ["*"]
+                      routes:
+                        # Route 1: Specific for gRPC-Web calls
+                        - match:
+                            prefix: "/grewal.HomeGeneral/"
+                          route:
+                            cluster: grewal_backend_cluster
+                            timeout: 15s
+
+                        # Route 2: JavaScript files from GCS under /grewalcc/js/
+                        - match:
+                            prefix: "/js/"
+                          route:
+                            cluster: gcs_static_assets_cluster
+                            host_rewrite_literal: storage.googleapis.com
+                            regex_rewrite:
+                              pattern:
+                                google_re2: {}
+                                regex: "^/js/(.*)"
+                              substitution: >-
+                                /gcc-terraform-state-bucket/grewalcc/js/\\1
+                            timeout: 10s
+
+                        # Route 3: index.html (entry point and fallback)
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: gcs_static_assets_cluster
+                            host_rewrite_literal: storage.googleapis.com
+                            prefix_rewrite: >-
+                              /gcc-terraform-state-bucket/grewalcc/index.html
+                            timeout: 10s
+
+    - name: listener_http_redirect_to_https
+      address:
+        socket_address:
+          address: "{{envoy_listener_address}}"
+          port_value: 80
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": |-
+                  type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http_redirect
+                route_config:
+                  name: local_route_http_redirect
+                  virtual_hosts:
+                    - name: vh_redirect_all_to_https
                       domains: ["*"]
                       routes:
                         - match: {prefix: "/"}
-                          route:
-                            cluster: grewal_backend_cluster
-                            timeout: 0s
+                          redirect:
+                            https_redirect: true
+                            strip_query: false
+                            response_code: MOVED_PERMANENTLY
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": |-
+                        type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
   clusters:
     - name: grewal_backend_cluster
@@ -111,6 +181,26 @@ static_resources:
           explicit_http_config:
             http2_protocol_options: {}
 
+    - name: gcs_static_assets_cluster
+      type: LOGICAL_DNS
+      dns_lookup_family: V4_ONLY
+      connect_timeout: 5s
+      load_assignment:
+        cluster_name: gcs_static_assets_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: storage.googleapis.com
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": |-
+            type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: storage.googleapis.com
+
     - name: authz_cluster
       connect_timeout: 0.5s
       type: STRICT_DNS
@@ -124,7 +214,7 @@ static_resources:
                   address:
                     socket_address:
                       address: gcc-gem-a.node.consul
-                      port_value: 9001
+                      port_value: "{{authz_service_port | default(9001)}}"
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": |-
