@@ -14,8 +14,7 @@ static_resources:
           address: "{{envoy_listener_address}}"
           port_value: {{envoy_listener_port}}
       filter_chains:
-        -
-          transport_socket:
+        - transport_socket:
             name: envoy.transport_sockets.tls
             typed_config:
               "@type": |-
