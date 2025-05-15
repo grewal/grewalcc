@@ -5,7 +5,6 @@ admin:
     socket_address:
       address: "{{envoy_admin_address}}"
       port_value: {{envoy_admin_port}}
-
 static_resources:
   listeners:
     - name: listener_https_main
@@ -27,6 +26,21 @@ static_resources:
                       filename: "/etc/letsencrypt/live/grewal.cc/privkey.pem"
                 alpn_protocols: ["h2", "http/1.1"]
           filters:
+            - name: envoy.filters.network.rbac
+              typed_config:
+                "@type": |-
+                  type.googleapis.com/envoy.extensions.filters.network.rbac.v3.RBAC
+                stat_prefix: rbac_l3_ip_block
+                rules:
+                  action: DENY
+                  policies:
+                    "static_ip_deny_list":
+                      permissions:
+                        - any: true
+                      principals:
+                        - direct_remote_ip:
+                            address_prefix: "185.187.168.103"
+                            prefix_len: 32
             - name: envoy.filters.network.http_connection_manager
               typed_config:
                 "@type": |-
@@ -99,14 +113,11 @@ static_resources:
                     - name: grewal_cc_virtual_host
                       domains: ["*"]
                       routes:
-                        # Route 1: Specific for gRPC-Web calls
                         - match:
                             prefix: "/grewal.HomeGeneral/"
                           route:
                             cluster: grewal_backend_cluster
                             timeout: 15s
-
-                        # Route 2: JavaScript files from GCS under /grewalcc/js/
                         - match:
                             prefix: "/js/"
                           route:
@@ -119,8 +130,6 @@ static_resources:
                               substitution: >-
                                 /gcc-terraform-state-bucket/grewalcc/js/\\1
                             timeout: 10s
-
-                        # Route 3: index.html (entry point and fallback)
                         - match:
                             prefix: "/"
                           route:
@@ -129,7 +138,6 @@ static_resources:
                             prefix_rewrite: >-
                               /gcc-terraform-state-bucket/grewalcc/index.html
                             timeout: 10s
-
     - name: listener_http_redirect_to_https
       address:
         socket_address:
@@ -158,7 +166,6 @@ static_resources:
                     typed_config:
                       "@type": |-
                         type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-
   clusters:
     - name: grewal_backend_cluster
       connect_timeout: 5s
@@ -180,7 +187,6 @@ static_resources:
             type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
           explicit_http_config:
             http2_protocol_options: {}
-
     - name: gcs_static_assets_cluster
       type: LOGICAL_DNS
       dns_lookup_family: V4_ONLY
@@ -200,7 +206,6 @@ static_resources:
           "@type": |-
             type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           sni: storage.googleapis.com
-
     - name: authz_cluster
       connect_timeout: 0.5s
       type: STRICT_DNS
