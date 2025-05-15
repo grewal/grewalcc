@@ -32,8 +32,8 @@ static_resources:
                 "@type": |-
                   type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: ingress_https
-                use_remote_address: false
-                xff_num_trusted_hops: 1
+                use_remote_address: true
+                xff_num_trusted_hops: 0
                 common_http_protocol_options:
                   idle_timeout: 3600s
                 access_log:
