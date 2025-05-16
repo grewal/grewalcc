@@ -1,42 +1,58 @@
 ---
 # tasks file for authz_service role
 
-# 1. Ensure dependent directories exist (Consul config dir)
 - name: Ensure Consul config directory exists for service definition
   ansible.builtin.file:
     path: "/etc/consul.d"
     state: directory
     mode: '0755'
-  become: yes # Assuming root needed for /etc/consul.d
+  become: yes
 
-# 2. Deploy Consul service definition for authz-service
-- name: Deploy Consul service definition for authz-service
+- name: Deploy Consul HTTP service definition for authz-service
   ansible.builtin.template:
-    src: authz-service.hcl.j2
-    dest: "/etc/consul.d/authz-service.hcl"
+    src: authz-service-http.hcl.j2
+    dest: "/etc/consul.d/authz-service-http.hcl" # Deploys as authz-service-http.hcl
     owner: consul
     group: consul
     mode: '0644'
-  become: yes # Needed to write to /etc/consul.d
+  become: yes
   notify: Reload Consul Configuration
 
-# 3. Ensure authz-service container is running using the specified tag
+- name: Deploy Consul gRPC service definition for authz-service
+  ansible.builtin.template:
+    src: authz-service-grpc.hcl.j2
+    dest: "/etc/consul.d/authz-service-grpc.hcl" # Deploys as authz-service-grpc.hcl
+    owner: consul
+    group: consul
+    mode: '0644'
+  become: yes
+  notify: Reload Consul Configuration
+
+# Ensure your docker_container task for authz-service is here and correctly
+# uses authz_service_image_tag, publishes both host ports (e.g., 9001 and 9002),
+# and sets necessary environment variables for the container.
+# The container itself should listen on its internal ports (e.g., 9001 for HTTP, 9002 for gRPC).
 - name: Ensure authz-service container is running
   community.docker.docker_container:
     name: authz-service
-    image: "grewal/authz-service:{{ authz_service_image_tag }}"
-    state: started         # Ensure container is running
-    pull: true             # Always attempt to pull the specified image tag
-    recreate: true         # Recreate container if image or config differs from definition
+    image: "grewal/authz-service:{{ authz_service_image_tag }}" # Should be v0.2.0
+    state: started
+    pull: true
+    recreate: true # Important to pick up port changes if any
     network_mode: grewalnet 
     ports:
-      - "9001:9001"
-    restart_policy: always # Automatically restart if it stops/crashes
-    env:                   # Environment variables
-      CONSUL_HTTP_ADDR: "{{ consul_host_ip }}:8500"
-      LISTEN_ADDR: ":{{ authz_service_listen_port | default(9001) }}"
+      # Publish container's HTTP port (e.g., 9001) to host's 127.0.0.1:{{ authz_service_http_port }}
+      - "127.0.0.1:{{ authz_service_http_port | default(9001) }}:{{ authz_service_http_port_container | default(9001) }}"
+      # Publish container's gRPC port (e.g., 9002) to host's 127.0.0.1:{{ authz_service_grpc_port }}
+      - "127.0.0.1:{{ authz_service_grpc_port | default(9002) }}:{{ authz_service_grpc_port_container | default(9002) }}"
+    restart_policy: always
+    env:
+      CONSUL_HTTP_ADDR: "{{ consul_host_ip }}:{{ consul_http_port | default(8500) }}"
+      HTTP_LISTEN_ADDR: ":{{ authz_service_http_port_container | default(9001) }}"
+      GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port_container | default(9002) }}"
       REDIS_ADDR: "redis-server:{{ redis_port | default(6379) }}"
       REDIS_PASSWORD: "{{ redis_password }}"
+      LOG_LEVEL: "{{ authz_service_log_level | default(\"INFO\") }}"
     labels:
       service: authz-service
       managed_by: ansible

@@ -81,8 +81,8 @@ static_resources:
                       http_service:
                         server_uri:
                           uri: |-
-                            http://127.0.0.1:
-                              {{authz_service_port | default(9001)}}
+                            "http://authz-service.service.consul:
+                               {{ authz_service_listen_port | default(9001) }}"
                           cluster: authz_cluster
                           timeout: 0.2s
                         path_prefix: "/authz"
@@ -218,7 +218,8 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: gcc-gem-a.node.consul
+                      address: "authz-service.service.consul"
+                      #address: gcc-gem-a.node.consul
                       port_value: "{{authz_service_port | default(9001)}}"
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
