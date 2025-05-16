@@ -3,7 +3,6 @@ package authz
 import (
 	"context"
 	"log/slog"
-	"reflect"
 
 	pb "grewal.cc/services/security-service/go/pkg/genproto/envoy/service/auth/v3"
 	structpb "google.golang.org/protobuf/types/known/structpb"
@@ -55,7 +54,6 @@ func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*
 
 	envoyCoreMeta := attributes.GetMetadataContext()
 	if envoyCoreMeta != nil {
-		s.logger.Debug("L4 ext_authz: Raw MetadataContext type received", "type", reflect.TypeOf(envoyCoreMeta).String())
 		var dataStruct *structpb.Struct
 		if fm := envoyCoreMeta.GetFilterMetadata(); fm != nil {
 			if specificExtAuthzData, ok := fm["envoy.filters.network.ext_authz"]; ok && specificExtAuthzData != nil {
@@ -71,8 +69,6 @@ func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*
 				if val, ok := fields["transport_protocol"]; ok { transportProtocol = val.GetStringValue() }
 				if val, ok := fields["requested_server_name"]; ok { requestedServerName = val.GetStringValue() }
 			}
-		} else {
-			s.logger.Debug("L4 ext_authz: No specific dataStruct found in FilterMetadata for known ext_authz keys")
 		}
 	}
 	logAttrs = append(logAttrs, slog.String("connection_id", connectionID),
@@ -85,17 +81,25 @@ func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*
 		s.coreService.configMutex.RUnlock()
 
 		if ipIsBlocked {
-			s.logger.Warn("L4 ext_authz: Denying TCP connection, IP on dynamic blocklist", logAttrs...)
+			// L4 Deny due to IP blocklist
+			finalLogAttrs := append(logAttrs, slog.String("l4_decision", "deny"), slog.String("l4_reason", "ip_blocklist"))
+			s.logger.Warn("L4 ext_authz: Denying TCP connection", finalLogAttrs...)
+			// Increment L4 specific Prometheus counter for IP block deny here later
 			return &pb.CheckResponse{
 				HttpResponse: &pb.CheckResponse_DeniedResponse{
 					DeniedResponse: &pb.DeniedHttpResponse{},
 				},
 			}, nil
 		}
+	} else {
+		s.logger.Warn("L4 ext_authz: ClientIP is empty, cannot perform IP block check. Allowing connection.", logAttrs...)
 	}
 
-
-	s.logger.Info("L4 ext_authz: Allowing TCP connection (passed L4 IP check)", logAttrs...)
+	// If not blocked by IP, proceed to other L4 checks (like rate limiting - to be added) or allow
+	// For now, if not IP-blocked, it's allowed by L4.
+	finalLogAttrs := append(logAttrs, slog.String("l4_decision", "allow"), slog.String("l4_reason", "passed_ip_check"))
+	s.logger.Info("L4 ext_authz: Allowing TCP connection", finalLogAttrs...)
+	// Increment L4 specific Prometheus counter for allow here later
 	return &pb.CheckResponse{
 		HttpResponse: &pb.CheckResponse_OkResponse{
 			OkResponse: &pb.OkHttpResponse{},
