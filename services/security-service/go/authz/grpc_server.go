@@ -3,10 +3,9 @@ package authz
 import (
 	"context"
 	"log/slog"
-	"reflect" // Used for debug logging the type of metadata context
+	"reflect"
 
 	pb "grewal.cc/services/security-service/go/pkg/genproto/envoy/service/auth/v3"
-	// corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3" // Implicitly used by generated pb
 	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -30,8 +29,8 @@ func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*
 
 	attributes := req.GetAttributes()
 	if attributes == nil {
-		s.logger.Warn("L4 ext_authz: Received CheckRequest with nil Attributes, allowing by default")
-		return &pb.CheckResponse{HttpResponse: &pb.CheckResponse_OkResponse{OkResponse: &pb.OkHttpResponse{}}}, nil
+		s.logger.Warn("L4 ext_authz: Received CheckRequest with nil Attributes, denying connection")
+		return &pb.CheckResponse{HttpResponse: &pb.CheckResponse_DeniedResponse{DeniedResponse: &pb.DeniedHttpResponse{}}}, nil
 	}
 
 	if source := attributes.GetSource(); source != nil {
@@ -58,51 +57,45 @@ func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*
 	if envoyCoreMeta != nil {
 		s.logger.Debug("L4 ext_authz: Raw MetadataContext type received", "type", reflect.TypeOf(envoyCoreMeta).String())
 		var dataStruct *structpb.Struct
-
 		if fm := envoyCoreMeta.GetFilterMetadata(); fm != nil {
-			// Standard key for ext_authz specific data
 			if specificExtAuthzData, ok := fm["envoy.filters.network.ext_authz"]; ok && specificExtAuthzData != nil {
 				dataStruct = specificExtAuthzData
-			} else if genericExtAuthzData, ok := fm["ext_authz"]; ok && genericExtAuthzData != nil { 
+			} else if genericExtAuthzData, ok := fm["ext_authz"]; ok && genericExtAuthzData != nil {
 				dataStruct = genericExtAuthzData
 			}
 		}
 
 		if dataStruct != nil {
 			if fields := dataStruct.GetFields(); fields != nil {
-				if val, ok := fields["source.address"]; ok {
-					logAttrs = append(logAttrs, slog.String("source_address_meta", val.GetStringValue()))
-				}
-				if val, ok := fields["source.port"]; ok {
-					logAttrs = append(logAttrs, slog.Any("source_port_meta", val.GetNumberValue()))
-				}
-				if val, ok := fields["destination.address"]; ok {
-					logAttrs = append(logAttrs, slog.String("destination_address_meta", val.GetStringValue()))
-				}
-				if val, ok := fields["destination.port"]; ok {
-					logAttrs = append(logAttrs, slog.Any("destination_port_meta", val.GetNumberValue()))
-				}
-				if val, ok := fields["connection_id"]; ok {
-					connectionID = val.GetStringValue()
-				}
-				if val, ok := fields["transport_protocol"]; ok {
-					transportProtocol = val.GetStringValue()
-				}
-				if val, ok := fields["requested_server_name"]; ok {
-					requestedServerName = val.GetStringValue()
-				}
+				if val, ok := fields["connection_id"]; ok { connectionID = val.GetStringValue() }
+				if val, ok := fields["transport_protocol"]; ok { transportProtocol = val.GetStringValue() }
+				if val, ok := fields["requested_server_name"]; ok { requestedServerName = val.GetStringValue() }
 			}
 		} else {
-			s.logger.Debug("L4 ext_authz: No specific dataStruct found in FilterMetadata for ext_authz keys")
+			s.logger.Debug("L4 ext_authz: No specific dataStruct found in FilterMetadata for known ext_authz keys")
+		}
+	}
+	logAttrs = append(logAttrs, slog.String("connection_id", connectionID),
+		slog.String("transport_protocol", transportProtocol),
+		slog.String("requested_server_name", requestedServerName))
+
+	if clientIP != "" {
+		s.coreService.configMutex.RLock()
+		_, ipIsBlocked := s.coreService.ipBlocklist[clientIP]
+		s.coreService.configMutex.RUnlock()
+
+		if ipIsBlocked {
+			s.logger.Warn("L4 ext_authz: Denying TCP connection, IP on dynamic blocklist", logAttrs...)
+			return &pb.CheckResponse{
+				HttpResponse: &pb.CheckResponse_DeniedResponse{
+					DeniedResponse: &pb.DeniedHttpResponse{},
+				},
+			}, nil
 		}
 	}
 
-	logAttrs = append(logAttrs, slog.String("connection_id", connectionID))
-	logAttrs = append(logAttrs, slog.String("transport_protocol", transportProtocol))
-	logAttrs = append(logAttrs, slog.String("requested_server_name", requestedServerName))
 
-	s.logger.Info("L4 ext_authz: Received CheckRequest, allowing by default", logAttrs...)
-
+	s.logger.Info("L4 ext_authz: Allowing TCP connection (passed L4 IP check)", logAttrs...)
 	return &pb.CheckResponse{
 		HttpResponse: &pb.CheckResponse_OkResponse{
 			OkResponse: &pb.OkHttpResponse{},
