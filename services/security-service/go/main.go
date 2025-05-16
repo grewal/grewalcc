@@ -61,8 +61,11 @@ func pollConsulKV(app *authz.Service, logger *slog.Logger, wg *sync.WaitGroup, q
 			if err := app.FetchAndUpdateUABlocklist(); err != nil {
 				logger.Error("Error polling Consul KV for User-Agent blocklist", "error", err)
 			}
-			if err := app.FetchAndUpdateRateLimitConfig(); err != nil {
-				logger.Error("Error polling Consul KV for Rate Limit config", "error", err)
+			if err := app.FetchAndUpdateRateLimitConfig(); err != nil { // L7 HTTP Rate Limit
+				logger.Error("Error polling Consul KV for L7 HTTP Rate Limit config", "error", err)
+			}
+			if err := app.FetchAndUpdateL4ConnRateLimitConfig(); err != nil { // L4 Connection Rate Limit
+				logger.Error("Error polling Consul KV for L4 Connection Rate Limit config", "error", err)
 			}
 		case <-quit:
 			logger.Info("Stopping Consul KV poller.")
@@ -108,8 +111,9 @@ func main() {
 	app := authz.NewService(logger, consulClient.KV(), rdb)
 	if err := app.FetchAndUpdateIPBlocklist(); err != nil { logger.Error("Initial IP blocklist fetch failed", "error", err) }
 	if err := app.FetchAndUpdateUABlocklist(); err != nil { logger.Error("Initial User-Agent blocklist fetch failed", "error", err) }
-	if err := app.FetchAndUpdateRateLimitConfig(); err != nil { logger.Error("Initial Rate Limit config fetch failed", "error", err) }
-	
+	if err := app.FetchAndUpdateRateLimitConfig(); err != nil { logger.Error("Initial L7 HTTP Rate Limit config fetch failed", "error", err) }
+	if err := app.FetchAndUpdateL4ConnRateLimitConfig(); err != nil { logger.Error("Initial L4 Connection Rate Limit config fetch failed", "error", err) }
+
 	var wg sync.WaitGroup; quit := make(chan struct{})
 	wg.Add(1); go pollConsulKV(app, logger, &wg, quit)
 
