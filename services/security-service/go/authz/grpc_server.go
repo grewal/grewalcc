@@ -3,6 +3,7 @@ package authz
 import (
 	"context"
 	"log/slog"
+	"reflect"
 
 	pb "grewal.cc/services/security-service/go/pkg/genproto/envoy/service/auth/v3"
 	structpb "google.golang.org/protobuf/types/known/structpb"
@@ -54,6 +55,7 @@ func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*
 
 	envoyCoreMeta := attributes.GetMetadataContext()
 	if envoyCoreMeta != nil {
+		s.logger.Debug("L4 ext_authz: Raw MetadataContext type received", "type", reflect.TypeOf(envoyCoreMeta).String())
 		var dataStruct *structpb.Struct
 		if fm := envoyCoreMeta.GetFilterMetadata(); fm != nil {
 			if specificExtAuthzData, ok := fm["envoy.filters.network.ext_authz"]; ok && specificExtAuthzData != nil {
@@ -62,7 +64,6 @@ func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*
 				dataStruct = genericExtAuthzData
 			}
 		}
-
 		if dataStruct != nil {
 			if fields := dataStruct.GetFields(); fields != nil {
 				if val, ok := fields["connection_id"]; ok { connectionID = val.GetStringValue() }
@@ -75,31 +76,63 @@ func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*
 		slog.String("transport_protocol", transportProtocol),
 		slog.String("requested_server_name", requestedServerName))
 
+	// L4 IP Blocklist Check
 	if clientIP != "" {
 		s.coreService.configMutex.RLock()
 		_, ipIsBlocked := s.coreService.ipBlocklist[clientIP]
 		s.coreService.configMutex.RUnlock()
-
 		if ipIsBlocked {
-			// L4 Deny due to IP blocklist
 			finalLogAttrs := append(logAttrs, slog.String("l4_decision", "deny"), slog.String("l4_reason", "ip_blocklist"))
 			s.logger.Warn("L4 ext_authz: Denying TCP connection", finalLogAttrs...)
-			// Increment L4 specific Prometheus counter for IP block deny here later
-			return &pb.CheckResponse{
-				HttpResponse: &pb.CheckResponse_DeniedResponse{
-					DeniedResponse: &pb.DeniedHttpResponse{},
-				},
-			}, nil
+			return &pb.CheckResponse{HttpResponse: &pb.CheckResponse_DeniedResponse{DeniedResponse: &pb.DeniedHttpResponse{}}}, nil
 		}
 	} else {
-		s.logger.Warn("L4 ext_authz: ClientIP is empty, cannot perform IP block check. Allowing connection.", logAttrs...)
+		s.logger.Warn("L4 ext_authz: ClientIP is empty, cannot perform IP block check. Allowing.", logAttrs...)
 	}
 
-	// If not blocked by IP, proceed to other L4 checks (like rate limiting - to be added) or allow
-	// For now, if not IP-blocked, it's allowed by L4.
-	finalLogAttrs := append(logAttrs, slog.String("l4_decision", "allow"), slog.String("l4_reason", "passed_ip_check"))
+	// L4 TCP Connection Rate Limiting Logic
+	s.coreService.configMutex.RLock()
+	isL4RLEnabled := s.coreService.l4ConnRateLimitEnabled
+	l4RLLimit := s.coreService.l4ConnRateLimitCount
+	l4RLWindow := s.coreService.l4ConnRateLimitWindow
+	s.coreService.configMutex.RUnlock()
+
+	if isL4RLEnabled && clientIP != "" {
+		if s.coreService.redisClient == nil {
+			s.logger.Error("L4 Connection Rate Limiting enabled but Redis client is nil! Allowing connection.", logAttrs...)
+		} else {
+			redisKeyL4 := "l4_conn_rl:" + clientIP
+			var currentL4Count int64
+
+			pipe := s.coreService.redisClient.Pipeline()
+			incrCmd := pipe.Incr(ctx, redisKeyL4)
+			pipe.Expire(ctx, redisKeyL4, l4RLWindow)
+			_, execErr := pipe.Exec(ctx)
+
+			if execErr != nil {
+				s.coreService.logger.Error("L4 Redis pipeline failed for connection rate limit", append(logAttrs, slog.String("key", redisKeyL4), slog.String("error", execErr.Error()))...)
+			} else {
+				countResult, incrErr := incrCmd.Result()
+				if incrErr != nil {
+					s.coreService.logger.Error("L4 Redis INCR failed in pipeline for connection rate limit", append(logAttrs, slog.String("key", redisKeyL4), slog.String("error", incrErr.Error()))...)
+				} else {
+					currentL4Count = countResult
+					logAttrs = append(logAttrs, slog.Int64("l4_conn_rl_count", currentL4Count), slog.Int64("l4_conn_rl_limit", l4RLLimit))
+					if currentL4Count > l4RLLimit {
+						finalLogAttrs := append(logAttrs, slog.String("l4_decision", "deny"), slog.String("l4_reason", "rate_limit"))
+						s.logger.Warn("L4 ext_authz: Denying TCP connection due to L4 connection rate limit", finalLogAttrs...)
+						return &pb.CheckResponse{
+							HttpResponse: &pb.CheckResponse_DeniedResponse{DeniedResponse: &pb.DeniedHttpResponse{}},
+						}, nil
+					}
+					s.logger.Debug("L4 Connection rate limit check passed", logAttrs...)
+				}
+			}
+		}
+	}
+
+	finalLogAttrs := append(logAttrs, slog.String("l4_decision", "allow"), slog.String("l4_reason", "passed_all_l4_checks"))
 	s.logger.Info("L4 ext_authz: Allowing TCP connection", finalLogAttrs...)
-	// Increment L4 specific Prometheus counter for allow here later
 	return &pb.CheckResponse{
 		HttpResponse: &pb.CheckResponse_OkResponse{
 			OkResponse: &pb.OkHttpResponse{},

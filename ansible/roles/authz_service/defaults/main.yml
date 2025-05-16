@@ -1,4 +1,4 @@
-authz_service_image_tag: "v0.3.0"
+authz_service_image_tag: "v0.4.0"
 authz_service_http_port: 9001 # Host port for HTTP access (e.g., for Envoy on host net)
 authz_service_http_port_container: 9001 # Port the app listens on for HTTP INSIDE container
 
