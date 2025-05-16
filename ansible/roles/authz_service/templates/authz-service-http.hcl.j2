@@ -1,0 +1,20 @@
+# contents of roles/authz_service/templates/authz-service-http.hcl.j2
+service {
+  name = "authz-service"
+  id   = "authz-service-{{ ansible_hostname | default('localhost') }}-http"
+  tags = ["ext_authz", "security", "go", "http", "l7"]
+
+  address = "127.0.0.1"
+  port    = {{ authz_service_http_port | default(9001) }}
+
+  check {
+    id       = "authz-service-http-health"
+    name     = "AuthZ Service HTTP Health Check"
+    http     = "http://127.0.0.1:{{ authz_service_http_port | default(9001) }}/healthz"
+    method   = "GET"
+    interval = "10s"
+    timeout  = "2s"
+    failures_before_critical = 3
+    DeregisterCriticalServiceAfter = "5m"
+  }
+}

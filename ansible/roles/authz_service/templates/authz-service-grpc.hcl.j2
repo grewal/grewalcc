@@ -1,0 +1,9 @@
+# contents of roles/authz_service/templates/authz-service-grpc.hcl.j2
+service {
+  name = "authz-service-grpc"
+  id   = "authz-service-{{ ansible_hostname | default('localhost') }}-grpc"
+  tags = ["ext_authz", "security", "go", "grpc", "l4"]
+
+  address = "127.0.0.1"
+  port    = {{ authz_service_grpc_port | default(9002) }}
+}

@@ -3,12 +3,13 @@ package authz
 import (
 	"context"
 	"log/slog"
+	"reflect" // Used for debug logging the type of metadata context
 
 	pb "grewal.cc/services/security-service/go/pkg/genproto/envoy/service/auth/v3"
+	// corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3" // Implicitly used by generated pb
+	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
-// NetworkAuthzServer implements the envoy.service.auth.v3.AuthorizationServer interface
-// for network (L4) external authorization checks.
 type NetworkAuthzServer struct {
 	pb.UnimplementedAuthorizationServer
 	coreService *Service
@@ -22,22 +23,24 @@ func NewNetworkAuthzServer(coreSvc *Service, logger *slog.Logger) *NetworkAuthzS
 	}
 }
 
-// Check implements the gRPC Check method for L4 external authorization
-// logs request details and always allows the connection
 func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*pb.CheckResponse, error) {
-	var clientIP string
-	var clientPort uint32
-	var destIP string
-	var destPort uint32
+	var clientIP, destIP string
+	var clientPort, destPort uint32
 	var connectionID, transportProtocol, requestedServerName string
 
-	if source := req.GetAttributes().GetSource(); source != nil {
+	attributes := req.GetAttributes()
+	if attributes == nil {
+		s.logger.Warn("L4 ext_authz: Received CheckRequest with nil Attributes, allowing by default")
+		return &pb.CheckResponse{HttpResponse: &pb.CheckResponse_OkResponse{OkResponse: &pb.OkHttpResponse{}}}, nil
+	}
+
+	if source := attributes.GetSource(); source != nil {
 		if sourceAddr := source.GetAddress().GetSocketAddress(); sourceAddr != nil {
 			clientIP = sourceAddr.GetAddress()
 			clientPort = sourceAddr.GetPortValue()
 		}
 	}
-	if destination := req.GetAttributes().GetDestination(); destination != nil {
+	if destination := attributes.GetDestination(); destination != nil {
 		if destAddr := destination.GetAddress().GetSocketAddress(); destAddr != nil {
 			destIP = destAddr.GetAddress()
 			destPort = destAddr.GetPortValue()
@@ -51,35 +54,52 @@ func (s *NetworkAuthzServer) Check(ctx context.Context, req *pb.CheckRequest) (*
 		slog.Uint64("destination_port_peer", uint64(destPort)),
 	}
 
-	if metaCtx := req.GetAttributes().GetMetadataContext(); metaCtx != nil {
-		if fields := metaCtx.GetFields(); fields != nil {
-			if sourceAddressVal, ok := fields["source.address"]; ok {
-				logAttrs = append(logAttrs, slog.String("source_address_meta", sourceAddressVal.GetStringValue()))
-			}
-			if sourcePortVal, ok := fields["source.port"]; ok {
-				// NumberValue could be float64, ensure appropriate logging/casting if using directly
-				logAttrs = append(logAttrs, slog.Any("source_port_meta", sourcePortVal.GetNumberValue()))
-			}
-			if destAddressVal, ok := fields["destination.address"]; ok {
-				logAttrs = append(logAttrs, slog.String("destination_address_meta", destAddressVal.GetStringValue()))
-			}
-			if destPortVal, ok := fields["destination.port"]; ok {
-				logAttrs = append(logAttrs, slog.Any("destination_port_meta", destPortVal.GetNumberValue()))
-			}
-			if connIDVal, ok := fields["connection_id"]; ok {
-				connectionID = connIDVal.GetStringValue() // Stored if needed for logic
-				logAttrs = append(logAttrs, slog.String("connection_id_meta", connectionID))
-			}
-			if transportProtoVal, ok := fields["transport_protocol"]; ok {
-				transportProtocol = transportProtoVal.GetStringValue() // Stored if needed for logic
-				logAttrs = append(logAttrs, slog.String("transport_protocol_meta", transportProtocol))
-			}
-			if sniVal, ok := fields["requested_server_name"]; ok {
-				requestedServerName = sniVal.GetStringValue() // Stored if needed for logic
-				logAttrs = append(logAttrs, slog.String("requested_server_name_meta", requestedServerName))
+	envoyCoreMeta := attributes.GetMetadataContext()
+	if envoyCoreMeta != nil {
+		s.logger.Debug("L4 ext_authz: Raw MetadataContext type received", "type", reflect.TypeOf(envoyCoreMeta).String())
+		var dataStruct *structpb.Struct
+
+		if fm := envoyCoreMeta.GetFilterMetadata(); fm != nil {
+			// Standard key for ext_authz specific data
+			if specificExtAuthzData, ok := fm["envoy.filters.network.ext_authz"]; ok && specificExtAuthzData != nil {
+				dataStruct = specificExtAuthzData
+			} else if genericExtAuthzData, ok := fm["ext_authz"]; ok && genericExtAuthzData != nil { 
+				dataStruct = genericExtAuthzData
 			}
 		}
+
+		if dataStruct != nil {
+			if fields := dataStruct.GetFields(); fields != nil {
+				if val, ok := fields["source.address"]; ok {
+					logAttrs = append(logAttrs, slog.String("source_address_meta", val.GetStringValue()))
+				}
+				if val, ok := fields["source.port"]; ok {
+					logAttrs = append(logAttrs, slog.Any("source_port_meta", val.GetNumberValue()))
+				}
+				if val, ok := fields["destination.address"]; ok {
+					logAttrs = append(logAttrs, slog.String("destination_address_meta", val.GetStringValue()))
+				}
+				if val, ok := fields["destination.port"]; ok {
+					logAttrs = append(logAttrs, slog.Any("destination_port_meta", val.GetNumberValue()))
+				}
+				if val, ok := fields["connection_id"]; ok {
+					connectionID = val.GetStringValue()
+				}
+				if val, ok := fields["transport_protocol"]; ok {
+					transportProtocol = val.GetStringValue()
+				}
+				if val, ok := fields["requested_server_name"]; ok {
+					requestedServerName = val.GetStringValue()
+				}
+			}
+		} else {
+			s.logger.Debug("L4 ext_authz: No specific dataStruct found in FilterMetadata for ext_authz keys")
+		}
 	}
+
+	logAttrs = append(logAttrs, slog.String("connection_id", connectionID))
+	logAttrs = append(logAttrs, slog.String("transport_protocol", transportProtocol))
+	logAttrs = append(logAttrs, slog.String("requested_server_name", requestedServerName))
 
 	s.logger.Info("L4 ext_authz: Received CheckRequest, allowing by default", logAttrs...)
 
