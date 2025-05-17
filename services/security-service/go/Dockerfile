@@ -41,7 +41,7 @@ COPY --from=builder /authz-service /app/authz-service
 # USER appuser
 
 # Expose the port the application listens on (informational).
-EXPOSE 9001
+EXPOSE 9001 9002
 
 # Define the entrypoint for the container.
 ENTRYPOINT ["/app/authz-service"]
