@@ -5,7 +5,6 @@ admin:
     socket_address:
       address: "{{envoy_admin_address}}"
       port_value: {{envoy_admin_port}}
-
 static_resources:
   listeners:
     - name: listener_https_main
@@ -27,6 +26,35 @@ static_resources:
                       filename: "/etc/letsencrypt/live/grewal.cc/privkey.pem"
                 alpn_protocols: ["h2", "http/1.1"]
           filters:
+            - name: envoy.filters.network.rbac
+              typed_config:
+                "@type": |-
+                  type.googleapis.com/envoy.extensions.filters.network.rbac.v3.RBAC
+                stat_prefix: rbac_l3_ip_block
+                rules:
+                  action: DENY
+                  policies:
+                    "static_ip_deny_list":
+                      permissions:
+                        - any: true
+                      principals:
+                        - direct_remote_ip:
+                            address_prefix: "73.92.2.75"
+                            prefix_len: 32
+                        - direct_remote_ip:
+                            address_prefix: "1.2.3.4"
+                            prefix_len: 32
+            - name: envoy.filters.network.ext_authz
+              typed_config:
+                "@type": |-
+                  type.googleapis.com/envoy.extensions.filters.network.ext_authz.v3.ExtAuthz
+                stat_prefix: ext_authz_network_l4
+                failure_mode_allow: false
+                transport_api_version: V3
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: authz_network_grpc_cluster
+                  timeout: 0.2s
             - name: envoy.filters.network.http_connection_manager
               typed_config:
                 "@type": |-
@@ -66,10 +94,9 @@ static_resources:
                         allow_partial_message: true
                       http_service:
                         server_uri:
-                          uri: |-
-                            http://127.0.0.1:
-                              {{authz_service_port | default(9001)}}
-                          cluster: authz_cluster
+                          uri: "http://authz-service.service.consul:
+                            {{authz_service_listen_port | default(9001)}}"
+                          cluster: authz_http_cluster
                           timeout: 0.2s
                         path_prefix: "/authz"
                         authorization_request:
@@ -99,14 +126,11 @@ static_resources:
                     - name: grewal_cc_virtual_host
                       domains: ["*"]
                       routes:
-                        # Route 1: Specific for gRPC-Web calls
                         - match:
                             prefix: "/grewal.HomeGeneral/"
                           route:
                             cluster: grewal_backend_cluster
                             timeout: 15s
-
-                        # Route 2: JavaScript files from GCS under /grewalcc/js/
                         - match:
                             prefix: "/js/"
                           route:
@@ -119,8 +143,6 @@ static_resources:
                               substitution: >-
                                 /gcc-terraform-state-bucket/grewalcc/js/\\1
                             timeout: 10s
-
-                        # Route 3: index.html (entry point and fallback)
                         - match:
                             prefix: "/"
                           route:
@@ -129,7 +151,6 @@ static_resources:
                             prefix_rewrite: >-
                               /gcc-terraform-state-bucket/grewalcc/index.html
                             timeout: 10s
-
     - name: listener_http_redirect_to_https
       address:
         socket_address:
@@ -158,7 +179,6 @@ static_resources:
                     typed_config:
                       "@type": |-
                         type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-
   clusters:
     - name: grewal_backend_cluster
       connect_timeout: 5s
@@ -180,7 +200,6 @@ static_resources:
             type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
           explicit_http_config:
             http2_protocol_options: {}
-
     - name: gcs_static_assets_cluster
       type: LOGICAL_DNS
       dns_lookup_family: V4_ONLY
@@ -200,24 +219,43 @@ static_resources:
           "@type": |-
             type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           sni: storage.googleapis.com
-
-    - name: authz_cluster
+    - name: authz_http_cluster
       connect_timeout: 0.5s
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       dns_lookup_family: V4_ONLY
       load_assignment:
-        cluster_name: authz_cluster
+        cluster_name: authz_http_cluster
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: gcc-gem-a.node.consul
-                      port_value: "{{authz_service_port | default(9001)}}"
+                      address: "authz-service.service.consul"
+                      port_value: {{authz_service_listen_port | default(9001)}}
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": |-
             type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
           explicit_http_config:
             http_protocol_options: {}
+    - name: authz_network_grpc_cluster
+      connect_timeout: 0.5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      dns_lookup_family: V4_ONLY
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": |-
+            type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: authz_network_grpc_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: "authz-service-grpc.service.consul"
+                      port_value: {{authz_service_grpc_port | default(9002)}}
