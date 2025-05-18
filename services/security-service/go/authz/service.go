@@ -345,3 +345,16 @@ func (s *Service) HandleAuthzRequest(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("L7 Request allowed", logAttrs...)
 	w.Header().Set("X-Authz-Decision", "Allow"); w.WriteHeader(http.StatusOK); fmt.Fprintln(w, "OK")
 }
+
+// GetIPBlocklistSnapshot returns a copy of the current in-memory IP blocklist.
+// This is used by the eBPF controller to sync to the kernel map.
+func (s *Service) GetIPBlocklistSnapshot() map[string]struct{} {
+	s.configMutex.RLock()
+	defer s.configMutex.RUnlock()
+
+	snapshot := make(map[string]struct{}, len(s.ipBlocklist))
+	for ip, val := range s.ipBlocklist {
+		snapshot[ip] = val
+	}
+	return snapshot
+}
