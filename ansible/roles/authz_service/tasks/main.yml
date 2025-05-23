@@ -1,5 +1,23 @@
 ---
-# tasks file for authz_service role
+
+# In ansible/roles/authz_service/tasks/main.yml
+- name: Ensure BPF map base pinning directory exists and is writable for container root
+  block:
+    - name: Create BPF map pinning base directory on host
+      ansible.builtin.file:
+        path: "{{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
+        state: directory
+        mode: '0777' # Make it world-writable temporarily for extreme debugging
+        owner: root
+        group: root
+      become: yes
+
+    - name: Ensure BPF map pinning base directory has open permissions (host)
+      ansible.builtin.command: "sudo chmod 0777 {{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
+      changed_when: false # This command doesn't report change well
+      become: false # Command already has sudo
+  tags:
+    - ebpf_setup
 
 - name: Ensure Consul config directory exists for service definition
   ansible.builtin.file:
@@ -11,7 +29,7 @@
 - name: Deploy Consul HTTP service definition for authz-service
   ansible.builtin.template:
     src: authz-service-http.hcl.j2
-    dest: "/etc/consul.d/authz-service-http.hcl" # Deploys as authz-service-http.hcl
+    dest: "/etc/consul.d/authz-service-http.hcl"
     owner: consul
     group: consul
     mode: '0644'
@@ -21,39 +39,45 @@
 - name: Deploy Consul gRPC service definition for authz-service
   ansible.builtin.template:
     src: authz-service-grpc.hcl.j2
-    dest: "/etc/consul.d/authz-service-grpc.hcl" # Deploys as authz-service-grpc.hcl
+    dest: "/etc/consul.d/authz-service-grpc.hcl"
     owner: consul
     group: consul
     mode: '0644'
   become: yes
   notify: Reload Consul Configuration
 
-# Ensure your docker_container task for authz-service is here and correctly
-# uses authz_service_image_tag, publishes both host ports (e.g., 9001 and 9002),
-# and sets necessary environment variables for the container.
-# The container itself should listen on its internal ports (e.g., 9001 for HTTP, 9002 for gRPC).
 - name: Ensure authz-service container is running
   community.docker.docker_container:
     name: authz-service
-    image: "grewal/authz-service:{{ authz_service_image_tag }}" # Should be v0.2.0
+    image: "grewal/authz-service:{{ authz_service_image_tag }}"
     state: started
     pull: true
-    recreate: true # Important to pick up port changes if any
-    network_mode: grewalnet 
-    ports:
-      # Publish container's HTTP port (e.g., 9001) to host's 127.0.0.1:{{ authz_service_http_port }}
-      - "127.0.0.1:{{ authz_service_http_port | default(9001) }}:{{ authz_service_http_port_container | default(9001) }}"
-      # Publish container's gRPC port (e.g., 9002) to host's 127.0.0.1:{{ authz_service_grpc_port }}
-      - "127.0.0.1:{{ authz_service_grpc_port | default(9002) }}:{{ authz_service_grpc_port_container | default(9002) }}"
+    recreate: true
+    network_mode: host
+      #ports:
+      #- "{{ authz_service_http_port | default(9001) }}:{{ authz_service_http_port_container | default(9001) }}"
+      #- "{{ authz_service_grpc_port | default(9002) }}:{{ authz_service_grpc_port_container | default(9002) }}"
     restart_policy: always
     env:
       CONSUL_HTTP_ADDR: "{{ consul_host_ip }}:{{ consul_http_port | default(8500) }}"
       HTTP_LISTEN_ADDR: ":{{ authz_service_http_port_container | default(9001) }}"
       GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port_container | default(9002) }}"
-      REDIS_ADDR: "redis-server:{{ redis_port | default(6379) }}"
+      REDIS_ADDR: "127.0.0.1:{{ redis_port | default(6379) }}"
       REDIS_PASSWORD: "{{ redis_password }}"
-      LOG_LEVEL: "{{ authz_service_log_level | default(\"INFO\") }}"
+      LOG_LEVEL: "{{ authz_service_log_level | default('INFO') }}"
+      XDP_INTERFACE_NAME: "{{ authz_service_xdp_interface | default('ens4') }}"
+      XDP_OBJECT_PATH: "{{ authz_service_xdp_object_path | default('/app/ebpf/kernel/xdp_ip_blocker.o') }}"
+      XDP_MAP_ROOT_PATH: "{{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
+      XDP_IP_BLOCKLIST_MAP_NAME: "{{ authz_service_xdp_ip_blocklist_map_name | default('ip_blocklist_map') }}"
     labels:
       service: authz-service
       managed_by: ansible
+    privileged: true
+    capabilities:
+      - SYS_ADMIN
+      - BPF
+      - NET_ADMIN
+      - IPC_LOCK
+    volumes:
+      - /sys/fs/bpf:/sys/fs/bpf:rshared
   become: no
