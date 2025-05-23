@@ -72,3 +72,8 @@ CMakeUserPresets.json
 *.exe
 *.out
 *.app
+
+# eBPF build artifacts
+services/security-service/ebpf/kernel/*.o
+services/security-service/ebpf/*.ll
+services/security-service/ebpf/*.bc
