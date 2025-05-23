@@ -46,7 +46,9 @@
       - "no"
       - "--requirepass"
       - "{{ redis_password_resolved }}"
-    
+    ports:
+      - "127.0.0.1:{{ redis_port | default(6379) }}:{{ redis_port_container | default(6379) }}"
+
     # volumes:
     #   - "{{ redis_data_dir_host }}:/data" # to disable disk persistence.
     
