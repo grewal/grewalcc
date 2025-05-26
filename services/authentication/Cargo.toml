@@ -4,41 +4,45 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1", features = ["full"] } # Async runtime
-axum = "0.7"                                   # Web framework
-serde = { version = "1.0", features = ["derive"] } # Serialization/Deserialization
-serde_json = "1.0"                             # JSON support for Serde
+tokio = { version = "1", features = ["full"] }
+axum = "0.7" # Using 0.7.x series for stability, Cargo will pick latest patch
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
-sqlx = { version = "0.7", features = [ "runtime-tokio-rustls", "postgres", "uuid", "chrono", "json" ] } # Async SQL, ensure features match your needs
-chrono = { version = "0.4", features = ["serde"] } # Timestamps
-jsonwebtoken = "9"                             # JWT creation/validation
-argon2 = "0.5"                                 # Password hashing
-secrecy = { version = "0.8", features = ["serde"] } # For handling secret values like passwords
+# For PostgreSQL
+sqlx = { version = "0.7", features = [ "runtime-tokio-rustls", "postgres", "uuid", "chrono", "json" ] }
 
-uuid = { version = "1", features = ["v4", "serde"] } # UUID generation
+# For time and JWT claims
+chrono = { version = "0.4", features = ["serde"] }
 
-# Error Handling
+# For JWTs
+jsonwebtoken = "9" # Using version 9.x.x
+
+# For password hashing
+argon2 = "0.5"
+secrecy = { version = "0.8", features = ["serde"] } # For handling passwords securely
+
+# For UUIDs
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# For error handling
 thiserror = "1.0"
 anyhow = "1.0"
 
-# Logging
+# For logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
 
-# Consul KV (check crates.io for the best current actively maintained one, `consulrs` is an option)
-# For now, let's assume a placeholder or we'll add it when we implement KV logic.
-# consulrs = "0.6" # Example
+# For Consul KV client
+consulrs = "0.1" # A modern async Consul client
 
-# Redis
+# For Redis client
 redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
 
-# Configuration - for reading .env files or similar if needed
-# dotenvy = "0.15" # Optional: for loading .env files for local dev
+# For loading .env files during local development
+dotenvy = "0.15"
 
-# For JWKS key generation and representation (might need these or similar)
+# For RSA key generation/handling for JWKS (needed for RS256 signing)
 rsa = "0.9"
 rand = "0.8"
-base64 = "0.22" # For base64url encoding parts of JWKS/JWT if needed manually
-
-# For .env file handling for local development secrets
-dotenvy = "0.15"
+base64 = "0.22"
