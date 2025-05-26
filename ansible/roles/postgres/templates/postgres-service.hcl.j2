@@ -1,0 +1,36 @@
+# roles/postgres/templates/postgres-service.hcl.j2
+service {
+  name = "{{ postgres_consul_service_name }}"
+  id   = "{{ postgres_consul_service_id }}"
+  port = {{ postgres_port_container | int }}
+
+  # Address should be the IP the service is reachable on *within the Consul network*
+  # Since it's on grewalnet (a Docker bridge network), its container IP would be dynamic.
+  # However, for services that need to be reached by other services on the same bridge,
+  # Consul DNS will resolve the service name to the correct container IP on that network.
+  # If you were to connect from the HOST, you'd use 127.0.0.1 (due to port publishing).
+  # For inter-service communication on 'grewalnet', we don't strictly need to set 'address' here
+  # as Consul agent can often infer it or DNS works by service name.
+  # However, explicitly setting it to the container name might be useful if your Docker
+  # networking and Consul DNS setup benefits from it, or for clarity in the UI.
+  # If direct IP is needed for checks or specific routing, we'd need a way to get container IP.
+  # address = "{{ postgres_container_name }}" # Less common, usually rely on agent IP or leave for DNS.
+
+  tags = {{ postgres_consul_service_tags | to_json }}
+
+  checks = [
+    {
+      name     = "PostgreSQL TCP Check"
+      tcp      = "{{ postgres_container_name }}:{{ postgres_port_container | int }}"
+      interval = "10s"
+      timeout  = "2s"
+    },
+    {
+      name     = "PostgreSQL pg_isready Check"
+      args     = ["/usr/bin/pg_isready", "-U", "{{ postgres_user }}", "-d", "{{ postgres_db_name }}", "-h", "{{ postgres_container_name }}", "-p", "{{ postgres_port_container }}"]
+      interval = "30s"
+      timeout  = "5s"
+    }
+  ]
+
+}

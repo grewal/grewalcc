@@ -13,6 +13,7 @@
     # - grafana # (Memory constraint) run locally via SSH tunnel
     - consul
     - redis
+    - postgres
     - authz_service
     #- redis_exporter
     - envoy
