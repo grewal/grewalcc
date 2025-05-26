@@ -7,6 +7,8 @@ data_dir = "/consul/data"
 server = true
 bootstrap_expect = 1
 
+enable_local_script_checks = true
+
 # --- Increase Rate Limits (Temporary Diagnostic) ---
 limits {
   http_max_conns_per_client = 400 # Default 200

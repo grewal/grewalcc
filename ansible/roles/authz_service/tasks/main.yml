@@ -74,10 +74,10 @@
       managed_by: ansible
     privileged: true
     capabilities:
-      - SYS_ADMIN
-      - BPF
-      - NET_ADMIN
-      - IPC_LOCK
+      - CAP_SYS_ADMIN
+      - CAP_NET_ADMIN
+      - CAP_IPC_LOCK
+      - CAP_SYS_RESOURCE
     volumes:
       - /sys/fs/bpf:/sys/fs/bpf:rshared
   become: no
