@@ -1,6 +1,6 @@
 // src/db.rs
 
-use anyhow::Context;
+use crate::errors::AppError;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::time::Duration;
 
@@ -21,14 +21,15 @@ impl Default for DbConfig {
             database_url: String::new(),
             max_connections: 5,
             min_connections: 1,
-            acquire_timeout_seconds: 10, // Default time to wait for a connection from pool
-            idle_timeout_seconds: 600,  // 10 minutes
-            max_lifetime_seconds: 1800, // 30 minutes
+            acquire_timeout_seconds: 10,
+            idle_timeout_seconds: 600,
+            max_lifetime_seconds: 1800,
         }
     }
 }
 
-pub async fn create_db_pool(config: &DbConfig) -> anyhow::Result<PgPool> {
+// Modified to return Result<PgPool, AppError>
+pub async fn create_db_pool(config: &DbConfig) -> Result<PgPool, AppError> {
     tracing::info!(
         max_connections = config.max_connections,
         min_connections = config.min_connections,
@@ -46,9 +47,10 @@ pub async fn create_db_pool(config: &DbConfig) -> anyhow::Result<PgPool> {
     let pool = pool_options
         .connect(&config.database_url)
         .await
-        .context(format!(
-            "Failed to create PostgreSQL connection pool for database_url (host/db check .env)"
-        ))?;
+        .map_err(|e| { // Map sqlx::Error to AppError
+            tracing::error!(error.cause_chain = ?e, "Failed to create PostgreSQL connection pool for database_url (host/db check .env)");
+            AppError::DatabaseConnectionFailed(e.to_string())
+        })?;
 
     tracing::info!("PostgreSQL connection pool successfully created.");
     Ok(pool)

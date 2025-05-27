@@ -20,17 +20,19 @@ pub struct ErrorResponse {
 }
 
 // --- Application Error Enum ---
-// This enum defines the different kinds of errors application can encounter.
 #[derive(Debug)] // Implement Debug for logging purposes
 pub enum AppError {
     // Errors related to database operations
     DatabaseQueryError(sqlx::Error),
+    DatabaseConnectionFailed(String), // For connection pool creation issues
     // Errors during password hashing
     PasswordHashingError(String), // Include a message for context
     // Errors from input validation
     InputValidationError(HashMap<String, String>), // Key is field name, Value is error message
     // Errors when a user or resource conflicts (e.g., username/email already exists)
     ConflictError { field: String, message: String },
+    // Errors for invalid login attempts
+    InvalidCredentials(String), // Added this variant
     // Errors from JWT operations (e.g. creation, signing)
     TokenCreationError(String),
     // Errors for unauthorized access attempts (though primary JWT validation is by Envoy)
@@ -40,11 +42,9 @@ pub enum AppError {
     // Errors from configuration loading
     ConfigError(String),
     // Errors from external service calls (e.g. Consul, Redis)
-    ExternalServiceError{ service_name: String, details: String }
+    ExternalServiceError { service_name: String, details: String },
 }
 
-// Implement IntoResponse for AppError
-// This tells Axum how to convert our AppError enum into an HTTP response.
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message, details, field) = match self {
@@ -53,6 +53,15 @@ impl IntoResponse for AppError {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "A database error occurred.".to_string(),
+                    None,
+                    None,
+                )
+            }
+            AppError::DatabaseConnectionFailed(msg) => {
+                tracing::error!("Database connection failed: {}", msg);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Could not connect to the database.".to_string(),
                     None,
                     None,
                 )
@@ -77,11 +86,15 @@ impl IntoResponse for AppError {
             }
             AppError::ConflictError { field, message } => {
                 tracing::warn!("Conflict error: field={}, message={}", field, message);
+                (StatusCode::CONFLICT, message, None, Some(field))
+            }
+            AppError::InvalidCredentials(msg) => {
+                tracing::warn!("Invalid credentials attempt: {}", msg);
                 (
-                    StatusCode::CONFLICT, 
-                    message, 
-                    None, 
-                    Some(field)
+                    StatusCode::UNAUTHORIZED,
+                    "Invalid username, email, or password.".to_string(),
+                    None,
+                    None,
                 )
             }
             AppError::TokenCreationError(msg) => {
@@ -95,12 +108,7 @@ impl IntoResponse for AppError {
             }
             AppError::Unauthorized(msg) => {
                 tracing::warn!("Unauthorized access attempt: {}", msg);
-                (
-                    StatusCode::UNAUTHORIZED,
-                    msg, // Directly use the message for unauthorized
-                    None,
-                    None
-                )
+                (StatusCode::UNAUTHORIZED, msg, None, None)
             }
             AppError::InternalServerError(msg) => {
                 tracing::error!("Internal server error: {}", msg);
@@ -108,7 +116,7 @@ impl IntoResponse for AppError {
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "An unexpected internal server error occurred.".to_string(),
                     None,
-                    None
+                    None,
                 )
             }
             AppError::ConfigError(msg) => {
@@ -117,16 +125,23 @@ impl IntoResponse for AppError {
                     StatusCode::INTERNAL_SERVER_ERROR, // Config errors are server-side
                     "Server configuration error.".to_string(),
                     None,
-                    None
+                    None,
                 )
             }
-            AppError::ExternalServiceError{ service_name, details } => {
-                tracing::error!("External service error: service={}, details={}", service_name, details);
+            AppError::ExternalServiceError { service_name, details } => {
+                tracing::error!(
+                    "External service error: service={}, details={}",
+                    service_name,
+                    details
+                );
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("A problem occurred while communicating with an external service ({}).", service_name),
+                    format!(
+                        "A problem occurred while communicating with an external service ({}).",
+                        service_name
+                    ),
                     None,
-                    None
+                    None,
                 )
             }
         };
@@ -145,14 +160,22 @@ impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AppError::DatabaseQueryError(e) => write!(f, "Database error: {}", e),
+            AppError::DatabaseConnectionFailed(msg) => write!(f, "Database connection failed: {}", msg),
             AppError::PasswordHashingError(msg) => write!(f, "Password hashing error: {}", msg),
-            AppError::InputValidationError(details) => write!(f, "Input validation failed: {:?}", details),
-            AppError::ConflictError { field, message } => write!(f, "Conflict on field '{}': {}", field, message),
+            AppError::InputValidationError(details) => {
+                write!(f, "Input validation failed: {:?}", details)
+            }
+            AppError::ConflictError { field, message } => {
+                write!(f, "Conflict on field '{}': {}", field, message)
+            }
+            AppError::InvalidCredentials(msg) => write!(f, "Invalid credentials: {}", msg), // Added
             AppError::TokenCreationError(msg) => write!(f, "Token creation error: {}", msg),
             AppError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
             AppError::InternalServerError(msg) => write!(f, "Internal server error: {}", msg),
             AppError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
-            AppError::ExternalServiceError { service_name, details } => write!(f, "External service error with {}: {}", service_name, details),
+            AppError::ExternalServiceError { service_name, details } => {
+                write!(f, "External service error with {}: {}", service_name, details)
+            }
         }
     }
 }
