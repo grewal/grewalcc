@@ -1,4 +1,7 @@
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use sqlx::PgPool;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
@@ -10,9 +13,11 @@ mod db;
 mod errors;
 mod models;
 mod services;
+mod handlers;
 
 use config::AppConfig;
 use errors::AppError;
+use crate::handlers::register_user_handler;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -55,10 +60,12 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
+    info!("Applying database migrations...");
     match sqlx::migrate!("./migrations").run(&db_pool).await {
         Ok(_) => info!("Database migrations applied successfully."),
         Err(e) => {
             error!("Failed to apply database migrations: {:?}", e);
+            // It's critical to stop if migrations fail.
             return Err(AppError::InternalServerError(format!(
                 "Database migration failed: {}",
                 e
@@ -73,6 +80,8 @@ async fn main() -> Result<(), AppError> {
 
     let app = Router::new()
         .route("/health", get(|| async { "OK" }))
+        // Add the registration route
+        .route("/auth/register", post(register_user_handler))
         .with_state(app_state);
 
     let listen_addr_str = format!("{}:{}", app_config.app_host, app_config.app_port);
@@ -100,7 +109,8 @@ async fn main() -> Result<(), AppError> {
             )));
         }
     };
-    
+
+    info!("Authentication service ready and awaiting connections.");
     if let Err(e) = axum::serve(listener, app.into_make_service())
         .with_graceful_shutdown(shutdown_signal())
         .await
@@ -134,7 +144,8 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => { info!("Received Ctrl+C, shutting down.")},
-        _ = terminate => { info!("Received terminate signal, shutting down.")},
+        _ = ctrl_c => { info!("Received Ctrl+C, initiating graceful shutdown...")},
+        _ = terminate => { info!("Received terminate signal, initiating graceful shutdown...")},
     }
+    info!("Shutdown signal received, server will stop accepting new connections.");
 }
