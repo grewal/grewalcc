@@ -1,17 +1,39 @@
 use chrono::{DateTime, Utc};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
+use validator::{Validate, ValidationError};
 
-// --- Request Structs ---
-#[derive(Debug, Deserialize)]
+// Pre-compiled regex using once_cell
+static USERNAME_CHARACTER_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_]+$").unwrap());
+
+fn validate_username_characters(username: &str) -> Result<(), ValidationError> {
+    if USERNAME_CHARACTER_REGEX.is_match(username) {
+        Ok(())
+    } else {
+        let mut err = ValidationError::new("regex");
+        err.message = Some("Username can only contain alphanumeric characters and underscores.".into());
+        Err(err)
+    }
+}
+
+#[derive(Debug, Deserialize, Validate)]
 pub struct NewUserRequest {
+    #[validate(
+        length(min = 3, max = 32, message = "Username must be between 3 and 32 characters."),
+        custom(function = "crate::models::validate_username_characters")
+    )]
     pub username: String,
+    #[validate(email(message = "A valid email address is required."))]
     pub email: String,
+
+    #[validate(length(min = 8, max = 128, message = "Password must be between 8 and 128 characters."))]
     pub password: String,
 }
 
-// --- Database Model Struct ---
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct User {
     pub id: Uuid,
@@ -23,9 +45,7 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-// Helper methods on User to get/set roles as Vec<String>
 impl User {
-    // Helper to get roles as Vec<String>, handles None or malformed JSON
     pub fn get_roles_vec(&self) -> Vec<String> {
         self.roles
             .as_ref()
@@ -34,8 +54,6 @@ impl User {
     }
 }
 
-
-// --- Response Structs ---
 #[derive(Debug, Serialize)]
 pub struct UserResponse {
     pub id: Uuid,
