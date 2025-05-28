@@ -1,5 +1,3 @@
-// src/errors.rs
-
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -9,7 +7,6 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 // --- Generic Error Response Struct ---
-// struct will be serialized into JSON for error responses
 #[derive(Serialize, Debug)]
 pub struct ErrorResponse {
     pub error: String,
@@ -20,29 +17,20 @@ pub struct ErrorResponse {
 }
 
 // --- Application Error Enum ---
-#[derive(Debug)] // Implement Debug for logging purposes
+#[derive(Debug)]
 pub enum AppError {
-    // Errors related to database operations
     DatabaseQueryError(sqlx::Error),
-    DatabaseConnectionFailed(String), // For connection pool creation issues
-    // Errors during password hashing
-    PasswordHashingError(String), // Include a message for context
-    // Errors from input validation
-    InputValidationError(HashMap<String, String>), // Key is field name, Value is error message
-    // Errors when a user or resource conflicts (e.g., username/email already exists)
+    DatabaseConnectionFailed(String),
+    PasswordHashingError(String),
+    InputValidationError(HashMap<String, String>),
     ConflictError { field: String, message: String },
-    // Errors for invalid login attempts
-    InvalidCredentials(String), // Added this variant
-    // Errors from JWT operations (e.g. creation, signing)
+    InvalidCredentials(String),
     TokenCreationError(String),
-    // Errors for unauthorized access attempts (though primary JWT validation is by Envoy)
     Unauthorized(String),
-    // Generic internal server error
     InternalServerError(String),
-    // Errors from configuration loading
     ConfigError(String),
-    // Errors from external service calls (e.g. Consul, Redis)
     ExternalServiceError { service_name: String, details: String },
+    SerializationError(String),
 }
 
 impl IntoResponse for AppError {
@@ -122,7 +110,7 @@ impl IntoResponse for AppError {
             AppError::ConfigError(msg) => {
                 tracing::error!("Configuration error: {}", msg);
                 (
-                    StatusCode::INTERNAL_SERVER_ERROR, // Config errors are server-side
+                    StatusCode::INTERNAL_SERVER_ERROR,
                     "Server configuration error.".to_string(),
                     None,
                     None,
@@ -140,6 +128,15 @@ impl IntoResponse for AppError {
                         "A problem occurred while communicating with an external service ({}).",
                         service_name
                     ),
+                    None,
+                    None,
+                )
+            }
+            AppError::SerializationError(msg) => {
+                tracing::error!("Data serialization error: {}", msg);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "An internal error occurred while processing data.".to_string(),
                     None,
                     None,
                 )
@@ -168,7 +165,7 @@ impl std::fmt::Display for AppError {
             AppError::ConflictError { field, message } => {
                 write!(f, "Conflict on field '{}': {}", field, message)
             }
-            AppError::InvalidCredentials(msg) => write!(f, "Invalid credentials: {}", msg), // Added
+            AppError::InvalidCredentials(msg) => write!(f, "Invalid credentials: {}", msg),
             AppError::TokenCreationError(msg) => write!(f, "Token creation error: {}", msg),
             AppError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
             AppError::InternalServerError(msg) => write!(f, "Internal server error: {}", msg),
@@ -176,6 +173,7 @@ impl std::fmt::Display for AppError {
             AppError::ExternalServiceError { service_name, details } => {
                 write!(f, "External service error with {}: {}", service_name, details)
             }
+            AppError::SerializationError(msg) => write!(f, "Data serialization error: {}", msg),
         }
     }
 }
