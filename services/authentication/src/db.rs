@@ -53,7 +53,6 @@ pub async fn create_db_pool(config: &DbConfig) -> Result<PgPool, AppError> {
     Ok(pool)
 }
 
-// --- NewDbUser Struct ---
 #[derive(Debug)]
 pub struct NewDbUser {
     pub username: String,
@@ -70,8 +69,6 @@ pub async fn create_user(pool: &PgPool, new_db_user: NewDbUser) -> Result<User, 
         "Attempting to create new user in database"
     );
 
-    // Convert Vec<String> to Option<serde_json::Value> for database insertion
-    // This handles the case where roles might be empty, translating to SQL NULL.
     let roles_for_insert: Option<JsonValue> = if new_db_user.roles.is_empty() {
         None
     } else {
@@ -79,13 +76,13 @@ pub async fn create_user(pool: &PgPool, new_db_user: NewDbUser) -> Result<User, 
             Ok(val) => Some(val),
             Err(e) => {
                 tracing::error!("Failed to serialize roles to JSON for insertion: {:?}", e);
-                return Err(AppError::InternalServerError(format!("Failed to serialize roles: {}", e)));
+                return Err(AppError::SerializationError(format!("Failed to serialize roles: {}", e)));
             }
         }
     };
 
     let created_user_result = sqlx::query_as!(
-        User, // User.roles is now Option<JsonValue>
+        User,
         r#"
         INSERT INTO users (username, email, hashed_password, roles)
         VALUES ($1, $2, $3, $4)
@@ -94,14 +91,13 @@ pub async fn create_user(pool: &PgPool, new_db_user: NewDbUser) -> Result<User, 
             username,
             email,
             hashed_password,
-            roles, -- No complex type hint needed here now. sqlx maps jsonb to Option<JsonValue>.
+            roles, 
             created_at,
             updated_at
         "#,
         new_db_user.username,
         new_db_user.email,
         new_db_user.hashed_password,
-        // Bind the Option<serde_json::Value>.
         roles_for_insert as Option<JsonValue>
     )
     .fetch_one(pool)
@@ -136,6 +132,57 @@ pub async fn create_user(pool: &PgPool, new_db_user: NewDbUser) -> Result<User, 
             }
             tracing::error!("Database error during user creation: {:?}", sqlx_err);
             Err(AppError::DatabaseQueryError(sqlx_err))
+        }
+    }
+}
+
+// --- Fetch a user by username OR email ---
+pub async fn get_user_by_username_or_email(
+    pool: &PgPool,
+    username_or_email: &str,
+) -> Result<Option<User>, AppError> {
+    tracing::debug!(identifier = %username_or_email, "Attempting to fetch user by username or email");
+
+    let is_email = username_or_email.contains('@');
+
+    let user_result = if is_email {
+        sqlx::query_as!(
+            User, // User.roles is Option<JsonValue>
+            r#"
+            SELECT id, username, email, hashed_password, roles, created_at, updated_at
+            FROM users
+            WHERE lower(email) = lower($1)
+            "#,
+            username_or_email
+        )
+        .fetch_optional(pool)
+        .await
+    } else {
+        sqlx::query_as!(
+            User, // User.roles is Option<JsonValue>
+            r#"
+            SELECT id, username, email, hashed_password, roles, created_at, updated_at
+            FROM users
+            WHERE lower(username) = lower($1)
+            "#,
+            username_or_email
+        )
+        .fetch_optional(pool)
+        .await
+    };
+
+    match user_result {
+        Ok(Some(user)) => {
+            tracing::info!(user_id = %user.id, "User found for identifier: {}", username_or_email);
+            Ok(Some(user))
+        }
+        Ok(None) => {
+            tracing::info!("No user found for identifier: {}", username_or_email);
+            Ok(None)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Database error while fetching user by identifier: {}", username_or_email);
+            Err(AppError::DatabaseQueryError(e))
         }
     }
 }
