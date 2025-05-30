@@ -1,9 +1,10 @@
+// src/handlers.rs
+
 use crate::{
-    config::JwtConfig,
     db,
     errors::AppError,
     models::{LoginUserRequest, LoginSuccessResponse, UserResponse, NewUserRequest as AppNewUserRequest},
-    services::{password_service, token_service},
+    services::{password_service},
     AppState,
 };
 use axum::{extract::State, Json};
@@ -11,6 +12,7 @@ use secrecy::SecretString;
 use std::sync::Arc;
 use validator::Validate;
 
+// --- User Registration Handler ---
 pub async fn register_user_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<AppNewUserRequest>,
@@ -47,7 +49,7 @@ pub async fn register_user_handler(
 
 // --- User Login Handler ---
 pub async fn login_user_handler(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>, // AppState now contains Arc<TokenService>
     Json(payload): Json<LoginUserRequest>,
 ) -> Result<Json<LoginSuccessResponse>, AppError> {
     tracing::info!(identifier = %payload.username_or_email, "Received login request");
@@ -84,10 +86,10 @@ pub async fn login_user_handler(
         ));
     }
 
-    let jwt_config_clone: JwtConfig = state.config.jwt_config.clone();
-    let temp_token_service = token_service::TokenService::new(Arc::new(jwt_config_clone))?;
+    // --- Access TokenService from AppState ---
+    let token_service = state.token_service.clone(); // Clone the Arc<TokenService>
 
-    let access_token = temp_token_service.generate_access_token(
+    let access_token = token_service.generate_access_token( // Call method on the cloned Arc
         user.id,
         &user.username,
         &user.get_roles_vec(),
