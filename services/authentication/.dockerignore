@@ -1,0 +1,19 @@
+# Ignore Git directory
+.git
+.gitignore
+
+# Ignore local target build artifacts (these will be built inside Docker)
+target/
+**/target/
+
+# Ignore local .env file (secrets should be passed as environment variables to the container)
+.env
+**/.env
+
+# Ignore Rust Rover / IntelliJ / VSCode specific files
+.idea/
+.vscode/
+
+# Ignore local SQLx CLI data if any (migrations are copied explicitly)
+.sqlx/
+**/.sqlx/
