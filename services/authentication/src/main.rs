@@ -1,50 +1,56 @@
-// src/main.rs (Your last working version for registration endpoint)
 use axum::{
-    extract::State, // Used by health_check_handler
+    extract::State,
     routing::{get, post},
     Router,
 };
 use sqlx::PgPool;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
-use tracing::{error, info, Level, debug}; // Added debug
-use tracing_subscriber::{FmtSubscriber, EnvFilter}; // Added EnvFilter
+use tracing::{error, info, Level, debug};
+use tracing_subscriber::{FmtSubscriber, EnvFilter};
 
+// --- MODULE DECLARATIONS ---
 mod config;
 mod db;
 mod errors;
+mod handlers;
+mod kv_store;
 mod models;
 mod services;
-mod handlers;
+// --- END MODULE DECLARATIONS ---
 
-use config::AppConfig;
+// --- BRINGING ITEMS INTO SCOPE ---
+use config::AppConfig; // Used for Arc<AppConfig>
 use errors::AppError;
-use crate::handlers::register_user_handler; // This was in your working version
+use crate::handlers::{register_user_handler, login_user_handler};
+use crate::services::token_service::TokenService;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db_pool: PgPool,
     pub config: Arc<AppConfig>,
+    pub token_service: Arc<TokenService>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
-    dotenvy::dotenv().ok(); // Load .env
+    dotenvy::dotenv().ok();
 
-    let log_level_str = std::env::var("RUST_LOG").unwrap_or_else(|_| "info,authentication=debug,sqlx=warn".to_string());
+    let log_level_str = std::env::var("RUST_LOG").unwrap_or_else(|_| "info,authentication=debug,sqlx=warn,jsonwebtoken=debug".to_string());
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .with_env_filter(EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new(&log_level_str)).unwrap_or_else(|e| {
             eprintln!("Warning: Failed to parse RUST_LOG ('{}'), using default 'info': {}", log_level_str, e);
             EnvFilter::new("info")
         }))
-        .json() // Use json for structured logging
+        .json()
         .finish();
     tracing::subscriber::set_global_default(subscriber)
         .expect("Failed to set global default tracing subscriber");
 
     info!("Starting authentication service...");
 
+    // Load application configuration
     let app_config = match crate::config::load_config().await {
         Ok(cfg) => Arc::new(cfg),
         Err(e) => {
@@ -57,17 +63,12 @@ async fn main() -> Result<(), AppError> {
     };
     info!(version = env!("CARGO_PKG_VERSION"), "Application configuration loaded successfully.");
 
-    let db_pool = match crate::db::create_db_pool(&app_config.db_config).await {
-        Ok(pool) => {
-            // Success is logged in create_db_pool
-            pool
-        }
-        Err(app_err) => { // app_err is AppError
-            error!("Failed to create database connection pool: {:?}", app_err);
-            return Err(app_err);
-        }
-    };
+    // Create database connection pool
+    info!(database_url = %app_config.db_config.database_url, "Connecting to database...");
+    let db_pool = crate::db::create_db_pool(&app_config.db_config).await?;
+    // Success is logged within create_db_pool
 
+    // Apply database migrations
     info!("Applying database migrations...");
     match sqlx::migrate!("./migrations").run(&db_pool).await {
         Ok(_) => info!("Database migrations applied successfully."),
@@ -80,7 +81,6 @@ async fn main() -> Result<(), AppError> {
         }
     }
     
-    // Test query from your working version
     match sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM users")
         .fetch_one(&db_pool)
         .await
@@ -93,18 +93,28 @@ async fn main() -> Result<(), AppError> {
         }
     }
 
+    // --- Initialize TokenService ---
+    let cloned_jwt_config: config::JwtConfig = app_config.jwt_config.clone(); // Clone the JwtConfig data
+    let jwt_config_arc_for_service: Arc<config::JwtConfig> = Arc::new(cloned_jwt_config); // Create a new Arc for it
+    let token_service = Arc::new(TokenService::new(jwt_config_arc_for_service)?); // Pass the Arc<JwtConfig>
+    info!("TokenService initialized successfully.");
+
+    // Create shared application state
     let app_state = Arc::new(AppState {
         db_pool,
-        config: Arc::clone(&app_config),
+        config: Arc::clone(&app_config), // Clone Arc for AppConfig
+        token_service: Arc::clone(&token_service), // Clone Arc for TokenService
     });
 
+    // Define application routes
     let app = Router::new()
-        .route("/health", get(health_check_handler)) // Using your health_check_handler
+        .route("/health", get(health_check_handler))
         .route("/auth/register", post(register_user_handler))
-        .with_state(app_state); // app_state is already Arc here
+        .route("/auth/login", post(login_user_handler))
+        .with_state(app_state); // Pass the Arc<AppState>
 
+    // Start the server
     let listen_addr_str = format!("{}:{}", app_config.app_host, app_config.app_port);
-
     let addr: SocketAddr = match listen_addr_str.parse() {
         Ok(addr) => addr,
         Err(e) => {
@@ -117,7 +127,6 @@ async fn main() -> Result<(), AppError> {
     };
 
     info!("Listening on {}", addr);
-
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(listener) => listener,
         Err(e) => {
@@ -143,10 +152,10 @@ async fn main() -> Result<(), AppError> {
 
     Ok(())
 }
-
-// Your working health_check_handler that takes State
+    
+// Health check handler that now correctly uses the Arc<AppState>
 async fn health_check_handler(State(state): State<Arc<AppState>>) -> &'static str {
-    debug!(
+    debug!( // Use debug from tracing
         db_pool_connections = state.db_pool.size(),
         db_pool_idle = state.db_pool.num_idle(),
         config_app_port = state.config.app_port,
