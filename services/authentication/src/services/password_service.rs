@@ -74,9 +74,8 @@ pub async fn verify_password(password_hash_str: &str, password_to_verify: Secret
         AppError::InternalServerError("Password verification process failed unexpectedly.".to_string())
     })?; // This ? is for JoinError
 
-    // Now handle the Result from the closure itself
     match verification_succeeded {
-        Ok(_) => { // This means argon2.verify_password succeeded
+        Ok(_) => {
             info!("Password verification successful.");
             Ok(true)
         }
@@ -92,7 +91,6 @@ pub async fn verify_password(password_hash_str: &str, password_to_verify: Secret
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
