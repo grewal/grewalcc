@@ -2,6 +2,7 @@ use axum::{
     extract::State,
     routing::{get, post},
     Router,
+    middleware as axum_middleware,
 };
 use sqlx::PgPool;
 use std::{net::SocketAddr, sync::Arc};
@@ -9,7 +10,6 @@ use tokio::signal;
 use tracing::{error, info, Level, debug};
 use tracing_subscriber::{FmtSubscriber, EnvFilter};
 
-// --- MODULE DECLARATIONS ---
 mod config;
 mod db;
 mod errors;
@@ -17,13 +17,13 @@ mod handlers;
 mod kv_store;
 mod models;
 mod services;
-// --- END MODULE DECLARATIONS ---
+mod middleware;
 
-// --- BRINGING ITEMS INTO SCOPE ---
-use config::AppConfig; // Used for Arc<AppConfig>
+use config::AppConfig;
 use errors::AppError;
-use crate::handlers::{register_user_handler, login_user_handler};
+use crate::handlers::{register_user_handler, login_user_handler, get_current_user_handler};
 use crate::services::token_service::TokenService;
+use crate::middleware::auth_middleware as app_auth_middleware;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -50,7 +50,6 @@ async fn main() -> Result<(), AppError> {
 
     info!("Starting authentication service...");
 
-    // Load application configuration
     let app_config = match crate::config::load_config().await {
         Ok(cfg) => Arc::new(cfg),
         Err(e) => {
@@ -63,12 +62,9 @@ async fn main() -> Result<(), AppError> {
     };
     info!(version = env!("CARGO_PKG_VERSION"), "Application configuration loaded successfully.");
 
-    // Create database connection pool
     info!(database_url = %app_config.db_config.database_url, "Connecting to database...");
     let db_pool = crate::db::create_db_pool(&app_config.db_config).await?;
-    // Success is logged within create_db_pool
-
-    // Apply database migrations
+    
     info!("Applying database migrations...");
     match sqlx::migrate!("./migrations").run(&db_pool).await {
         Ok(_) => info!("Database migrations applied successfully."),
@@ -93,27 +89,34 @@ async fn main() -> Result<(), AppError> {
         }
     }
 
-    // --- Initialize TokenService ---
-    let cloned_jwt_config: config::JwtConfig = app_config.jwt_config.clone(); // Clone the JwtConfig data
-    let jwt_config_arc_for_service: Arc<config::JwtConfig> = Arc::new(cloned_jwt_config); // Create a new Arc for it
-    let token_service = Arc::new(TokenService::new(jwt_config_arc_for_service)?); // Pass the Arc<JwtConfig>
+    let cloned_jwt_config: config::JwtConfig = app_config.jwt_config.clone();
+    let jwt_config_arc_for_service: Arc<config::JwtConfig> = Arc::new(cloned_jwt_config);
+    let token_service = Arc::new(TokenService::new(jwt_config_arc_for_service)?);
     info!("TokenService initialized successfully.");
 
-    // Create shared application state
     let app_state = Arc::new(AppState {
         db_pool,
-        config: Arc::clone(&app_config), // Clone Arc for AppConfig
-        token_service: Arc::clone(&token_service), // Clone Arc for TokenService
+        config: Arc::clone(&app_config),
+        token_service: Arc::clone(&token_service),
     });
 
-    // Define application routes
-    let app = Router::new()
-        .route("/health", get(health_check_handler))
-        .route("/auth/register", post(register_user_handler))
-        .route("/auth/login", post(login_user_handler))
-        .with_state(app_state); // Pass the Arc<AppState>
+    // Define protected routes that need AppState for the middleware
+    let protected_routes = Router::new()
+        .route("/me", get(get_current_user_handler))
+        // Add other protected routes here later
+        .route_layer(axum_middleware::from_fn_with_state(Arc::clone(&app_state), app_auth_middleware));
 
-    // Start the server
+    // Define public routes
+    let public_routes = Router::new()
+        .route("/register", post(register_user_handler))
+        .route("/login", post(login_user_handler));
+
+    // Combine routers
+    let app = Router::new()
+        .route("/health", get(health_check_handler)) // Health check is public
+        .nest("/auth", public_routes.merge(protected_routes)) // Nest all /auth routes
+        .with_state(app_state);
+
     let listen_addr_str = format!("{}:{}", app_config.app_host, app_config.app_port);
     let addr: SocketAddr = match listen_addr_str.parse() {
         Ok(addr) => addr,
@@ -153,9 +156,8 @@ async fn main() -> Result<(), AppError> {
     Ok(())
 }
     
-// Health check handler that now correctly uses the Arc<AppState>
 async fn health_check_handler(State(state): State<Arc<AppState>>) -> &'static str {
-    debug!( // Use debug from tracing
+    debug!(
         db_pool_connections = state.db_pool.size(),
         db_pool_idle = state.db_pool.num_idle(),
         config_app_port = state.config.app_port,

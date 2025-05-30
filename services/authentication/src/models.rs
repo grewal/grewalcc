@@ -1,5 +1,3 @@
-// src/models.rs
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -7,7 +5,6 @@ use uuid::Uuid;
 use validator::Validate;
 
 // --- Request Structs ---
-
 #[derive(Debug, Deserialize, Validate)]
 pub struct NewUserRequest {
     #[validate(length(min = 3, max = 30, message = "Username must be between 3 and 30 characters."))]
@@ -26,21 +23,19 @@ pub struct LoginUserRequest {
     pub password: String,
 }
 
-
 // --- Database Model Struct ---
-#[derive(Debug, Serialize, sqlx::FromRow)] // sqlx::FromRow is essential
+#[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct User {
     pub id: Uuid,
     pub username: String,
     pub email: String,
     pub hashed_password: String,
-    pub roles: Option<JsonValue>, // Mapped from jsonb
+    pub roles: Option<JsonValue>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 impl User {
-    // Helper to get roles as Vec<String>, handles None or malformed JSON
     pub fn get_roles_vec(&self) -> Vec<String> {
         self.roles
             .as_ref()
@@ -50,9 +45,8 @@ impl User {
 }
 
 // --- Response Structs ---
-
 #[derive(Debug, Serialize)]
-pub struct UserResponse { // For registration and /me endpoints
+pub struct UserResponse {
     pub id: Uuid,
     pub username: String,
     pub email: String,
@@ -67,33 +61,30 @@ impl From<&User> for UserResponse {
             id: user.id,
             username: user.username.clone(),
             email: user.email.clone(),
-            roles: user.get_roles_vec(), // Uses the helper method
+            roles: user.get_roles_vec(),
             created_at: user.created_at,
             updated_at: user.updated_at,
         }
     }
 }
 
-// --- Response Struct for Login ---
 #[derive(Debug, Serialize)]
 pub struct LoginSuccessResponse {
     pub message: String,
     pub access_token: String,
-    // pub token_type: String, // Standard: "Bearer"
-    // pub expires_in: i64, // Access token lifetime in seconds from now
     pub user: UserResponse,
 }
 
 // --- JWT Claims Struct ---
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)] // Added Clone
 pub struct Claims {
-    // Standard claims (see RFC 7519)
-    pub sub: String, // Subject (user_id as a string)
-    pub exp: i64,    // Expiration Time (seconds since UNIX epoch)
-    pub iat: i64,    // Issued At (seconds since UNIX epoch)
-
+    // Standard claims
+    pub sub: String, 
+    pub exp: i64,    
+    pub iat: i64,    
     // Custom private claims
-    pub user_id: Uuid, // Store the actual Uuid
+    pub user_id: Uuid,
     pub roles: Vec<String>,
     pub username: String,
+    pub email: String,
 }
