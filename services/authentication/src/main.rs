@@ -1,12 +1,14 @@
+// src/main.rs (Your last working version for registration endpoint)
 use axum::{
+    extract::State, // Used by health_check_handler
     routing::{get, post},
     Router,
 };
 use sqlx::PgPool;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
-use tracing::{error, info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{error, info, Level, debug}; // Added debug
+use tracing_subscriber::{FmtSubscriber, EnvFilter}; // Added EnvFilter
 
 mod config;
 mod db;
@@ -17,7 +19,7 @@ mod handlers;
 
 use config::AppConfig;
 use errors::AppError;
-use crate::handlers::register_user_handler;
+use crate::handlers::register_user_handler; // This was in your working version
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,17 +29,23 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
+    dotenvy::dotenv().ok(); // Load .env
+
+    let log_level_str = std::env::var("RUST_LOG").unwrap_or_else(|_| "info,authentication=debug,sqlx=warn".to_string());
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new(&log_level_str)).unwrap_or_else(|e| {
+            eprintln!("Warning: Failed to parse RUST_LOG ('{}'), using default 'info': {}", log_level_str, e);
+            EnvFilter::new("info")
+        }))
+        .json() // Use json for structured logging
         .finish();
     tracing::subscriber::set_global_default(subscriber)
         .expect("Failed to set global default tracing subscriber");
 
     info!("Starting authentication service...");
 
-    let app_config_result = crate::config::load_config().await;
-    let app_config = match app_config_result {
+    let app_config = match crate::config::load_config().await {
         Ok(cfg) => Arc::new(cfg),
         Err(e) => {
             error!("Failed to load application configuration: {:?}", e);
@@ -47,14 +55,14 @@ async fn main() -> Result<(), AppError> {
             )));
         }
     };
-    info!("Configuration loaded successfully.");
+    info!(version = env!("CARGO_PKG_VERSION"), "Application configuration loaded successfully.");
 
     let db_pool = match crate::db::create_db_pool(&app_config.db_config).await {
         Ok(pool) => {
-            info!("Database connection pool created successfully.");
+            // Success is logged in create_db_pool
             pool
         }
-        Err(app_err) => {
+        Err(app_err) => { // app_err is AppError
             error!("Failed to create database connection pool: {:?}", app_err);
             return Err(app_err);
         }
@@ -65,11 +73,23 @@ async fn main() -> Result<(), AppError> {
         Ok(_) => info!("Database migrations applied successfully."),
         Err(e) => {
             error!("Failed to apply database migrations: {:?}", e);
-            // It's critical to stop if migrations fail.
             return Err(AppError::InternalServerError(format!(
                 "Database migration failed: {}",
                 e
             )));
+        }
+    }
+    
+    // Test query from your working version
+    match sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM users")
+        .fetch_one(&db_pool)
+        .await
+    {
+        Ok((count,)) => {
+            info!(user_count = count, "Successfully queried users table. Initial user count: {}", count);
+        }
+        Err(e) => {
+            error!("Failed to query users table after migration: {}", e);
         }
     }
 
@@ -79,10 +99,9 @@ async fn main() -> Result<(), AppError> {
     });
 
     let app = Router::new()
-        .route("/health", get(|| async { "OK" }))
-        // Add the registration route
+        .route("/health", get(health_check_handler)) // Using your health_check_handler
         .route("/auth/register", post(register_user_handler))
-        .with_state(app_state);
+        .with_state(app_state); // app_state is already Arc here
 
     let listen_addr_str = format!("{}:{}", app_config.app_host, app_config.app_port);
 
@@ -123,6 +142,17 @@ async fn main() -> Result<(), AppError> {
     }
 
     Ok(())
+}
+
+// Your working health_check_handler that takes State
+async fn health_check_handler(State(state): State<Arc<AppState>>) -> &'static str {
+    debug!(
+        db_pool_connections = state.db_pool.size(),
+        db_pool_idle = state.db_pool.num_idle(),
+        config_app_port = state.config.app_port,
+        "Health check endpoint hit"
+    );
+    "OK"
 }
 
 async fn shutdown_signal() {
