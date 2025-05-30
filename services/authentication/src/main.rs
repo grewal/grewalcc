@@ -1,99 +1,181 @@
-use anyhow::Context;
-use axum::{routing::get, Router};
-use sqlx::postgres::PgPoolOptions;
+// src/main.rs (Your last working version for registration endpoint)
+use axum::{
+    extract::State, // Used by health_check_handler
+    routing::{get, post},
+    Router,
+};
 use sqlx::PgPool;
-use std::env;
-use std::net::SocketAddr;
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
+use std::{net::SocketAddr, sync::Arc};
+use tokio::signal;
+use tracing::{error, info, Level, debug}; // Added debug
+use tracing_subscriber::{FmtSubscriber, EnvFilter}; // Added EnvFilter
 
-// Application state that can be shared with Axum handlers if needed later
+mod config;
+mod db;
+mod errors;
+mod models;
+mod services;
+mod handlers;
+
+use config::AppConfig;
+use errors::AppError;
+use crate::handlers::register_user_handler; // This was in your working version
+
 #[derive(Clone)]
-struct AppState {
-    db_pool: PgPool,
+pub struct AppState {
+    pub db_pool: PgPool,
+    pub config: Arc<AppConfig>,
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    dotenvy::dotenv().ok();
+async fn main() -> Result<(), AppError> {
+    dotenvy::dotenv().ok(); // Load .env
 
-    // 2. Initialize Logging (tracing)
-    // Construct a subscriber that filters messages based on the RUST_LOG environment variable.
+    let log_level_str = std::env::var("RUST_LOG").unwrap_or_else(|_| "info,authentication=debug,sqlx=warn".to_string());
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO) // Default level if RUST_LOG is not set
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()) // Respect RUST_LOG
-        .json() // Log in JSON format for better machine readability (optional, can be .pretty() for dev)
+        .with_max_level(Level::INFO)
+        .with_env_filter(EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new(&log_level_str)).unwrap_or_else(|e| {
+            eprintln!("Warning: Failed to parse RUST_LOG ('{}'), using default 'info': {}", log_level_str, e);
+            EnvFilter::new("info")
+        }))
+        .json() // Use json for structured logging
         .finish();
     tracing::subscriber::set_global_default(subscriber)
-        .expect("Setting default tracing subscriber failed");
+        .expect("Failed to set global default tracing subscriber");
 
-    tracing::info!("Authentication service starting up...");
+    info!("Starting authentication service...");
 
-    // 3. Load DATABASE_URL from environment
-    let database_url = env::var("DATABASE_URL")
-        .context("DATABASE_URL environment variable must be set")?;
-    tracing::info!("Connecting to database...");
+    let app_config = match crate::config::load_config().await {
+        Ok(cfg) => Arc::new(cfg),
+        Err(e) => {
+            error!("Failed to load application configuration: {:?}", e);
+            return Err(AppError::ConfigError(format!(
+                "Configuration loading failed: {}",
+                e
+            )));
+        }
+    };
+    info!(version = env!("CARGO_PKG_VERSION"), "Application configuration loaded successfully.");
 
-    // 4. Create PostgreSQL Connection Pool
-    let db_pool = PgPoolOptions::new()
-        .max_connections(5) // Configure max connections in the pool
-        .connect(&database_url)
-        .await
-        .context("Failed to create PostgreSQL connection pool")?;
-    tracing::info!("PostgreSQL connection pool created successfully.");
+    let db_pool = match crate::db::create_db_pool(&app_config.db_config).await {
+        Ok(pool) => {
+            // Success is logged in create_db_pool
+            pool
+        }
+        Err(app_err) => { // app_err is AppError
+            error!("Failed to create database connection pool: {:?}", app_err);
+            return Err(app_err);
+        }
+    };
 
-    // 5. Run DB Migrations on startup
-    tracing::info!("Running database migrations...");
-    sqlx::migrate!("./migrations") // Path relative to Cargo.toml
-        .run(&db_pool)
-        .await
-        .context("Failed to run database migrations")?;
-    tracing::info!("Database migrations applied successfully.");
-
-    // 6. Perform a relevant test query
+    info!("Applying database migrations...");
+    match sqlx::migrate!("./migrations").run(&db_pool).await {
+        Ok(_) => info!("Database migrations applied successfully."),
+        Err(e) => {
+            error!("Failed to apply database migrations: {:?}", e);
+            return Err(AppError::InternalServerError(format!(
+                "Database migration failed: {}",
+                e
+            )));
+        }
+    }
+    
+    // Test query from your working version
     match sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM users")
         .fetch_one(&db_pool)
         .await
     {
         Ok((count,)) => {
-            tracing::info!("Successfully queried users table. Initial user count: {}", count);
+            info!(user_count = count, "Successfully queried users table. Initial user count: {}", count);
         }
         Err(e) => {
-            tracing::error!("Failed to query users table after migration: {}", e);
+            error!("Failed to query users table after migration: {}", e);
         }
     }
-    
-    // Create an AppState instance (will be useful for handlers later)
-    let app_state = AppState { db_pool };
 
+    let app_state = Arc::new(AppState {
+        db_pool,
+        config: Arc::clone(&app_config),
+    });
 
-    // 7. Set up Axum Router and HTTP Server
     let app = Router::new()
-        .route("/health", get(health_check_handler))
-        .with_state(app_state); // Makes AppState available to handlers
+        .route("/health", get(health_check_handler)) // Using your health_check_handler
+        .route("/auth/register", post(register_user_handler))
+        .with_state(app_state); // app_state is already Arc here
 
-    let app_host = env::var("APP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let app_port_str = env::var("APP_PORT").unwrap_or_else(|_| "3000".to_string());
-    let app_port: u16 = app_port_str
-        .parse()
-        .context(format!("Invalid APP_PORT value: {}", app_port_str))?;
+    let listen_addr_str = format!("{}:{}", app_config.app_host, app_config.app_port);
 
-    let addr_str = format!("{}:{}", app_host, app_port);
-    let addr: SocketAddr = addr_str
-        .parse()
-        .context(format!("Invalid listen address format: {}", addr_str))?;
+    let addr: SocketAddr = match listen_addr_str.parse() {
+        Ok(addr) => addr,
+        Err(e) => {
+            error!("Invalid server address format '{}': {:?}", listen_addr_str, e);
+            return Err(AppError::InternalServerError(format!(
+                "Invalid server address: {}",
+                e
+            )));
+        }
+    };
 
-    tracing::info!("HTTP server listening on {}", addr);
+    info!("Listening on {}", addr);
 
-    axum::serve(tokio::net::TcpListener::bind(addr).await?, app.into_make_service())
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            error!("Failed to bind to address {}: {:?}", addr, e);
+            return Err(AppError::InternalServerError(format!(
+                "Failed to bind server: {}",
+                e
+            )));
+        }
+    };
+
+    info!("Authentication service ready and awaiting connections.");
+    if let Err(e) = axum::serve(listener, app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal())
         .await
-        .context("HTTP server failed")?;
-        
+    {
+        error!("Server error: {:?}", e);
+        return Err(AppError::InternalServerError(format!(
+            "Server execution failed: {}",
+            e
+        )));
+    }
+
     Ok(())
 }
 
-// health check handler
-async fn health_check_handler() -> &'static str {
-    tracing::debug!("Health check endpoint hit");
+// Your working health_check_handler that takes State
+async fn health_check_handler(State(state): State<Arc<AppState>>) -> &'static str {
+    debug!(
+        db_pool_connections = state.db_pool.size(),
+        db_pool_idle = state.db_pool.num_idle(),
+        config_app_port = state.config.app_port,
+        "Health check endpoint hit"
+    );
     "OK"
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("Failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => { info!("Received Ctrl+C, initiating graceful shutdown...")},
+        _ = terminate => { info!("Received terminate signal, initiating graceful shutdown...")},
+    }
+    info!("Shutdown signal received, server will stop accepting new connections.");
 }
