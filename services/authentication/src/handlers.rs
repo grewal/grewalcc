@@ -3,11 +3,15 @@
 use crate::{
     db,
     errors::AppError,
+    middleware::AuthenticatedUser,
     models::{LoginUserRequest, LoginSuccessResponse, UserResponse, NewUserRequest as AppNewUserRequest},
-    services::{password_service},
+    services::password_service,
     AppState,
 };
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Extension, State},
+    Json,
+};
 use secrecy::SecretString;
 use std::sync::Arc;
 use validator::Validate;
@@ -49,7 +53,7 @@ pub async fn register_user_handler(
 
 // --- User Login Handler ---
 pub async fn login_user_handler(
-    State(state): State<Arc<AppState>>, // AppState now contains Arc<TokenService>
+    State(state): State<Arc<AppState>>,
     Json(payload): Json<LoginUserRequest>,
 ) -> Result<Json<LoginSuccessResponse>, AppError> {
     tracing::info!(identifier = %payload.username_or_email, "Received login request");
@@ -86,12 +90,12 @@ pub async fn login_user_handler(
         ));
     }
 
-    // --- Access TokenService from AppState ---
-    let token_service = state.token_service.clone(); // Clone the Arc<TokenService>
-
-    let access_token = token_service.generate_access_token( // Call method on the cloned Arc
+    let token_service = state.token_service.clone();
+    // MODIFIED: Pass user.email to generate_access_token
+    let access_token = token_service.generate_access_token(
         user.id,
         &user.username,
+        &user.email, // Pass the email
         &user.get_roles_vec(),
     )?;
 
@@ -102,4 +106,12 @@ pub async fn login_user_handler(
         access_token,
         user: UserResponse::from(&user),
     }))
+}
+
+// --- Get Current User Handler (Protected) ---
+pub async fn get_current_user_handler(
+    Extension(authenticated_user): Extension<AuthenticatedUser>, // Extract from request extensions
+) -> Result<Json<AuthenticatedUser>, AppError> { // Return AuthenticatedUser directly
+    tracing::info!(user_id = %authenticated_user.user_id, username = %authenticated_user.username, "Serving /auth/me request for authenticated user");
+    Ok(Json(authenticated_user))
 }
