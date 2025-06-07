@@ -1,21 +1,13 @@
+# FILE: ansible/roles/authz_service/tasks/main.yml
 ---
-
-# In ansible/roles/authz_service/tasks/main.yml
-- name: Ensure BPF map base pinning directory exists and is writable for container root
-  block:
-    - name: Create BPF map pinning base directory on host
-      ansible.builtin.file:
-        path: "{{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
-        state: directory
-        mode: '0777' # Make it world-writable temporarily for extreme debugging
-        owner: root
-        group: root
-      become: yes
-
-    - name: Ensure BPF map pinning base directory has open permissions (host)
-      ansible.builtin.command: "sudo chmod 0777 {{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
-      changed_when: false # This command doesn't report change well
-      become: false # Command already has sudo
+- name: Ensure BPF map base pinning directory exists
+  ansible.builtin.file:
+    path: "{{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  become: yes
   tags:
     - ebpf_setup
 
@@ -54,10 +46,8 @@
     pull: true
     recreate: true
     network_mode: host
-      #ports:
-      #- "{{ authz_service_http_port | default(9001) }}:{{ authz_service_http_port_container | default(9001) }}"
-      #- "{{ authz_service_grpc_port | default(9002) }}:{{ authz_service_grpc_port_container | default(9002) }}"
     restart_policy: always
+    user: "0:0"
     env:
       CONSUL_HTTP_ADDR: "{{ consul_host_ip }}:{{ consul_http_port | default(8500) }}"
       HTTP_LISTEN_ADDR: ":{{ authz_service_http_port_container | default(9001) }}"
@@ -72,12 +62,12 @@
     labels:
       service: authz-service
       managed_by: ansible
+    
+    # Using privileged mode to bypass the stubborn AppArmor netlink denial.
     privileged: true
-    capabilities:
-      - SYS_ADMIN
-      - BPF
-      - NET_ADMIN
-      - IPC_LOCK
+    
     volumes:
       - /sys/fs/bpf:/sys/fs/bpf:rshared
-  become: no
+      
+  become: yes
+  tags: [authz_service, docker_container]
