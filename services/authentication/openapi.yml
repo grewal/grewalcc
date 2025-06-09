@@ -1,0 +1,26 @@
+openapi: 3.0.3
+info:
+  title: Grewal.cc Authentication Service API
+  description: "API for user registration, login, and identity management for the grewal.cc platform. This contract is the canonical source of truth for all API interactions."
+  version: 0.1.0
+  contact:
+    name: Monty Grewal
+    url: https://grewal.cc
+
+servers:
+  - url: https://grewal.cc
+    description: Production GCP Environment
+  - url: http://localhost:3000
+    description: Local Development Server
+
+tags:
+  - name: Authentication
+    description: Operations related to user authentication and session management.
+  - name: User Management
+    description: Operations related to user profiles.
+
+paths: {}
+
+components:
+  schemas: {}
+  securitySchemes: {}
