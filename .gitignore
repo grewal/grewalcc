@@ -73,6 +73,10 @@ CMakeUserPresets.json
 *.out
 *.app
 
+target/
+/.env
+.env
+
 # eBPF build artifacts
 services/security-service/ebpf/kernel/*.o
 services/security-service/ebpf/*.ll
