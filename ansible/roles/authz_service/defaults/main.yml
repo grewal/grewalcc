@@ -1,12 +1,13 @@
+authz_service_image_repository: "grewal/authz-service"
 authz_service_image_tag: "v0.6.2"
-authz_service_http_port: 9001 # Host port for HTTP access (e.g., for Envoy on host net)
-authz_service_http_port_container: 9001 # Port the app listens on for HTTP INSIDE container
 
-authz_service_grpc_port: 9002 # Host port for gRPC access (e.g., for Envoy on host net)
-authz_service_grpc_port_container: 9002 # Port the app listens on for gRPC INSIDE container
+authz_service_http_port: 9001 # Host port for HTTP access for Envoy
+authz_service_http_port_container: 9001 # for HTTP INSIDE container
+
+authz_service_grpc_port: 9002 # Host port for gRPC access for Envoy
+authz_service_grpc_port_container: 9002 # for gRPC INSIDE container
 
 authz_service_log_level: "INFO"
-# Variables for dependencies - ensure these are correct
-consul_host_ip: "10.128.0.22" # Or however you get this; from your defaults earlier
+consul_host_ip: "10.128.0.22"
 consul_http_port: 8500
 redis_port: 6379
