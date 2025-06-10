@@ -4,23 +4,23 @@ service {
   id   = "{{ postgres_consul_service_id }}"
   port = {{ postgres_port }}
 
-  # Advertised address for clients on the bridge network to use.
+  # The address field tells Consul where this service is listening.
+  # For a container published to the host's loopback, 127.0.0.1 is the
+  # correct address for the Consul agent (on the same host) to check.
   address = "{{ postgres_consul_service_address }}"
 
-  checks = [
-    {
-      name     = "PostgreSQL TCP Connection",
-      # Correct: Check the IP address Consul knows for this service.
-      tcp      = "{{ postgres_consul_service_address }}:{{ postgres_port }}",
-      interval = "15s",
-      timeout  = "3s"
-    },
-    {
-      name     = "PostgreSQL Ready Check",
-      docker_container_id = "{{ postgres_container_name }}",
-      shell               = "/usr/bin/pg_isready -U {{ postgres_user_vault }} -d {{ postgres_db_name_vault }} -h localhost -p {{ postgres_port }}",
-      interval            = "20s",
-      timeout             = "5s"
-    }
+  tags = [
+    "database",
+    "postgresql"
   ]
+
+  check {
+    name     = "PostgreSQL TCP Connection",
+    # It directly tests the IP and port Consul knows for this service.
+    tcp      = "{{ postgres_consul_service_address }}:{{ postgres_port }}",
+    interval = "15s",
+    timeout  = "3s",
+    # Deregister the service if the check is critical for this long.
+    deregister_critical_service_after = "3m"
+  }
 }
