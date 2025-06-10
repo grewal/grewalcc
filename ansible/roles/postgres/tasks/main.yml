@@ -1,92 +1,44 @@
+# ansible/roles/postgres/tasks/main.yml
 ---
-# roles/postgres/tasks/main.yml
-
-- name: Ensure Docker service is running and enabled
-  ansible.builtin.service:
-    name: docker
-    state: started
-    enabled: true
-  become: true
-  when: ansible_facts['os_family'] == "Debian"
-
 - name: Ensure PostgreSQL host data directory exists
   ansible.builtin.file:
-    path: "{{ postgres_data_dir_host }}"
+    path: "{{ postgres_host_data_path }}"
     state: directory
+    owner: "root"
+    group: "root"
     mode: '0755'
-  become: true
+  become: yes
 
-- name: Ensure PostgreSQL host backup directory exists
-  ansible.builtin.file:
-    path: "{{ postgres_backup_dir_host }}"
-    state: directory
-    mode: '0700'
-  become: true
-
-- name: Pull PostgreSQL Docker image
-  community.docker.docker_image:
-    name: "{{ postgres_docker_image_repository }}:{{ postgres_docker_image_tag }}"
-    source: pull
-  become: true
+- name: Deploy Consul service definition for PostgreSQL
+  ansible.builtin.template:
+    src: postgres-service.hcl.j2
+    dest: "/etc/consul.d/{{ postgres_consul_service_name }}.hcl"
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: Reload Consul Configuration
 
 - name: Ensure PostgreSQL container is running
   community.docker.docker_container:
     name: "{{ postgres_container_name }}"
-    image: "{{ postgres_docker_image_repository }}:{{ postgres_docker_image_tag }}"
+    image: "{{ postgres_docker_image_repo }}:{{ postgres_docker_image_tag }}"
     state: started
-    restart_policy: unless-stopped
-    networks:
-      - name: "{{ postgres_network_name }}"
+    restart_policy: always
+    network_mode: grewalnet
     ports:
-      - "{{ postgres_port_host }}:{{ postgres_port_container }}"
+      # Publish to host loopback for admin access and health checks from host
+      - "{{ postgres_consul_service_address }}:{{ postgres_port }}:{{ postgres_port }}"
     volumes:
-      - "{{ postgres_data_dir_host }}:/var/lib/postgresql/data"
+      - "{{ postgres_host_data_path }}:/var/lib/postgresql/data"
     env:
-      POSTGRES_USER: "{{ postgres_user }}"
+      POSTGRES_DB: "{{ postgres_db_name_vault }}"
+      POSTGRES_USER: "{{ postgres_user_vault }}"
       POSTGRES_PASSWORD: "{{ postgres_password_vault }}"
-      POSTGRES_DB: "{{ postgres_db_name }}"
-      PGDATA: "/var/lib/postgresql/data/pgdata"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U {{ postgres_user }} -d {{ postgres_db_name }} -h localhost"]
+      test: ["CMD-SHELL", "pg_isready -U {{ postgres_user_vault }} -d {{ postgres_db_name_vault }} -h localhost"]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 60s
-  become: true
-
-# Consul Service Registration
-- name: Ensure PostgreSQL Consul service definition directory exists
-  ansible.builtin.file:
-    path: "/etc/consul.d"
-    state: directory
-    mode: '0755'
-  become: true
-
-- name: Deploy PostgreSQL Consul service definition file
-  ansible.builtin.template:
-    src: postgres-service.hcl.j2
-    dest: "/etc/consul.d/postgres-service.hcl"
-    owner: root
-    group: root
-    mode: '0644'
-  become: true
-  notify: Reload Consul Configuration
-
-# Backup Script and Cron Job
-- name: Deploy PostgreSQL backup script
-  ansible.builtin.template:
-    src: backup_postgres_gcs.sh.j2
-    dest: "{{ postgres_backup_script_path_host }}"
-    owner: root
-    group: root
-    mode: '0750'
-  become: true
-
-- name: Ensure PostgreSQL backup cron job is configured
-  ansible.builtin.cron:
-    name: "PostgreSQL GCS Backup"
-    minute: "{{ postgres_backup_cron_schedule_minute }}"
-    hour: "{{ postgres_backup_cron_schedule_hour }}"
-    job: "{{ postgres_backup_script_path_host }}"
-    state: present
-  become: true
+  become: yes

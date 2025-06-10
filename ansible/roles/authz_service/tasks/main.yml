@@ -1,37 +1,22 @@
+# Corrected: ansible/roles/authz_service/tasks/main.yml
 ---
-
-# In ansible/roles/authz_service/tasks/main.yml
-- name: Ensure BPF map base pinning directory exists and is writable for container root
-  block:
-    - name: Create BPF map pinning base directory on host
-      ansible.builtin.file:
-        path: "{{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
-        state: directory
-        mode: '0777' # Make it world-writable temporarily for extreme debugging
-        owner: root
-        group: root
-      become: yes
-
-    - name: Ensure BPF map pinning base directory has open permissions (host)
-      ansible.builtin.command: "sudo chmod 0777 {{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
-      changed_when: false # This command doesn't report change well
-      become: false # Command already has sudo
-  tags:
-    - ebpf_setup
-
-- name: Ensure Consul config directory exists for service definition
+- name: Ensure BPF map pinning directory exists
   ansible.builtin.file:
-    path: "/etc/consul.d"
+    path: "{{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
     state: directory
     mode: '0755'
+    owner: root
+    group: root
   become: yes
+  tags:
+    - ebpf_setup
 
 - name: Deploy Consul HTTP service definition for authz-service
   ansible.builtin.template:
     src: authz-service-http.hcl.j2
     dest: "/etc/consul.d/authz-service-http.hcl"
-    owner: consul
-    group: consul
+    owner: root
+    group: root
     mode: '0644'
   become: yes
   notify: Reload Consul Configuration
@@ -40,8 +25,8 @@
   ansible.builtin.template:
     src: authz-service-grpc.hcl.j2
     dest: "/etc/consul.d/authz-service-grpc.hcl"
-    owner: consul
-    group: consul
+    owner: root
+    group: root
     mode: '0644'
   become: yes
   notify: Reload Consul Configuration
@@ -54,16 +39,13 @@
     pull: true
     recreate: true
     network_mode: host
-      #ports:
-      #- "{{ authz_service_http_port | default(9001) }}:{{ authz_service_http_port_container | default(9001) }}"
-      #- "{{ authz_service_grpc_port | default(9002) }}:{{ authz_service_grpc_port_container | default(9002) }}"
     restart_policy: always
     env:
-      CONSUL_HTTP_ADDR: "{{ consul_host_ip }}:{{ consul_http_port | default(8500) }}"
-      HTTP_LISTEN_ADDR: ":{{ authz_service_http_port_container | default(9001) }}"
-      GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port_container | default(9002) }}"
+      CONSUL_HTTP_ADDR: "127.0.0.1:{{ consul_http_port | default(8500) }}"
+      HTTP_LISTEN_ADDR: ":{{ authz_service_http_port | default(9001) }}"
+      GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port | default(9002) }}"
       REDIS_ADDR: "127.0.0.1:{{ redis_port | default(6379) }}"
-      REDIS_PASSWORD: "{{ redis_password }}"
+      REDIS_PASSWORD: "{{ redis_password_vault }}"
       LOG_LEVEL: "{{ authz_service_log_level | default('INFO') }}"
       XDP_INTERFACE_NAME: "{{ authz_service_xdp_interface | default('ens4') }}"
       XDP_OBJECT_PATH: "{{ authz_service_xdp_object_path | default('/app/ebpf/kernel/xdp_ip_blocker.o') }}"
@@ -72,12 +54,16 @@
     labels:
       service: authz-service
       managed_by: ansible
-    privileged: true
+
+    # Using the more secure and specific capabilities approach
+    privileged: false
     capabilities:
-      - CAP_SYS_ADMIN
-      - CAP_NET_ADMIN
-      - CAP_IPC_LOCK
-      - CAP_SYS_RESOURCE
+      - SYS_ADMIN
+      - NET_ADMIN
+      - IPC_LOCK
+
     volumes:
       - /sys/fs/bpf:/sys/fs/bpf:rshared
-  become: no
+
+  become: yes
+  tags: [authz_service, docker_container]

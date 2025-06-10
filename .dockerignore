@@ -1,0 +1,32 @@
+# Git stuff
+.git
+.gitignore
+.gitattributes
+.github/ # If workflows aren't needed in any image
+
+# IDE and OS files
+.idea/
+.vscode/
+*.iml
+*.DS_Store
+Thumbs.db
+
+# General build artifacts (especially if you have other languages/services)
+**/target/ # Ignores all target directories, including services/authentication/target
+**/node_modules/
+**/dist/
+**/build/
+**/*.pyc
+**/*.swp
+*~
+
+# Local environment files for any service
+**/.env 
+
+# Specific large directories you never want in ANY build context from root
+# e.g. if you had a large 'docs_build/' or 'test_output/'
+# For now, `**/target/` is the most important one from the root.
+
+# DO NOT ignore services/authentication/.sqlx from the root .dockerignore
+# if you want it in the context.
+# The Dockerfile's `COPY services/authentication/.sqlx` needs it to be in the context.
