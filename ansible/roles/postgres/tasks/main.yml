@@ -1,0 +1,34 @@
+# ansible/roles/postgres/tasks/main.yml
+---
+- name: Ensure PostgreSQL host data directory exists
+  ansible.builtin.file:
+    path: "{{ postgres_host_data_path }}"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: '0755'
+
+- name: Deploy Consul service definition for PostgreSQL
+  ansible.builtin.template:
+    src: postgres-service.hcl.j2
+    dest: "/etc/consul.d/{{ postgres_consul_service_name }}.hcl"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload Consul Configuration
+
+- name: Ensure PostgreSQL container is running
+  community.docker.docker_container:
+    name: "{{ postgres_container_name }}"
+    image: "{{ postgres_docker_image_repo }}:{{ postgres_docker_image_tag }}"
+    state: started
+    restart_policy: always
+    network_mode: grewalnet
+    ports:
+      - "{{ postgres_consul_service_address }}:{{ postgres_port }}:{{ postgres_port }}"
+    volumes:
+      - "{{ postgres_host_data_path }}:/var/lib/postgresql/data"
+    env:
+      POSTGRES_DB: "{{ postgres_db_name_vault }}"
+      POSTGRES_USER: "{{ postgres_user_vault }}"
+      POSTGRES_PASSWORD: "{{ postgres_password_vault }}"
