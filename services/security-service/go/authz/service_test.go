@@ -13,7 +13,6 @@ import (
 	consulapi "github.com/hashicorp/consul/api"
 )
 
-// Constants remain the same...
 const (
 	localTestIpBlocklistKVKey             = "config/security/ip_blocklist"
 	localTestUaBlocklistKVKey             = "config/security/ua_blocklist"
@@ -27,7 +26,6 @@ const (
 	localTestXDPGlobalEnabledKey               = "config/security/xdp/enabled"
 )
 
-// mockConsulKV and its methods remain the same...
 type mockConsulKV struct {
 	data                map[string][]byte
 	specificErrorForKey map[string]error
@@ -72,7 +70,6 @@ func TestHandleAuthzRequest(t *testing.T) {
 		reqPath           string
 		reqHeaders        map[string]string
 		expectedStatus    int
-		// Removed expectedHeader and expectedBodyFrag as they are no longer relevant
 		directRLOverride  bool
 		overrideRLEnabled bool
 		overrideRLLimit   int64
@@ -153,17 +150,12 @@ func TestHandleAuthzRequest(t *testing.T) {
 			handler := http.HandlerFunc(httpAuthzHandler.HandleAuthzRequest)
 			handler.ServeHTTP(rr, req)
 
-			// --- THE ONLY ASSERTION WE NEED NOW ---
 			if status := rr.Code; status != tc.expectedStatus {
 				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatus)
 			}
 		})
 	}
 }
-
-
-// Other tests (TestService_IPBlocklist_PopulationViaFetchAll, etc.) remain the same
-// as they test a different part of the code.
 
 func TestService_IPBlocklist_PopulationViaFetchAll(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
