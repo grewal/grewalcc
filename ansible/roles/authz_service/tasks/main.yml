@@ -11,19 +11,12 @@
   tags:
     - ebpf_setup
 
-- name: Ensure Consul config directory exists for service definition
-  ansible.builtin.file:
-    path: "/etc/consul.d"
-    state: directory
-    mode: '0755'
-  become: yes
-
 - name: Deploy Consul HTTP service definition for authz-service
   ansible.builtin.template:
     src: authz-service-http.hcl.j2
     dest: "/etc/consul.d/authz-service-http.hcl"
-    owner: consul
-    group: consul
+    owner: root
+    group: root
     mode: '0644'
   become: yes
   notify: Reload Consul Configuration
@@ -32,8 +25,8 @@
   ansible.builtin.template:
     src: authz-service-grpc.hcl.j2
     dest: "/etc/consul.d/authz-service-grpc.hcl"
-    owner: consul
-    group: consul
+    owner: root
+    group: root
     mode: '0644'
   become: yes
   notify: Reload Consul Configuration
@@ -47,13 +40,12 @@
     recreate: true
     network_mode: host
     restart_policy: always
-    user: "0:0"
     env:
-      CONSUL_HTTP_ADDR: "{{ consul_host_ip }}:{{ consul_http_port | default(8500) }}"
-      HTTP_LISTEN_ADDR: ":{{ authz_service_http_port_container | default(9001) }}"
-      GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port_container | default(9002) }}"
+      CONSUL_HTTP_ADDR: "127.0.0.1:{{ consul_http_port | default(8500) }}"
+      HTTP_LISTEN_ADDR: ":{{ authz_service_http_port | default(9001) }}"
+      GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port | default(9002) }}"
       REDIS_ADDR: "127.0.0.1:{{ redis_port | default(6379) }}"
-      REDIS_PASSWORD: "{{ redis_password }}"
+      REDIS_PASSWORD: "{{ redis_password_vault }}" # Using the vaulted variable
       LOG_LEVEL: "{{ authz_service_log_level | default('INFO') }}"
       XDP_INTERFACE_NAME: "{{ authz_service_xdp_interface | default('ens4') }}"
       XDP_OBJECT_PATH: "{{ authz_service_xdp_object_path | default('/app/ebpf/kernel/xdp_ip_blocker.o') }}"
@@ -62,12 +54,16 @@
     labels:
       service: authz-service
       managed_by: ansible
-    
-    # Using privileged mode to bypass the stubborn AppArmor netlink denial.
-    privileged: true
-    
+
+    # Use the more secure and specific capabilities approach.
+    privileged: false
+    capabilities:
+      - SYS_ADMIN
+      - NET_ADMIN
+      - IPC_LOCK
+
     volumes:
       - /sys/fs/bpf:/sys/fs/bpf:rshared
-      
-  become: yes
+
+  become: yes # 'become: yes' is needed to interact with the Docker daemon socket
   tags: [authz_service, docker_container]
