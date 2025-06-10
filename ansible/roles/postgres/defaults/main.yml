@@ -1,0 +1,13 @@
+# ansible/roles/postgres/defaults/main.yml
+---
+postgres_docker_image_repo: "postgres"
+postgres_docker_image_tag: "17.5-alpine"
+postgres_container_name: "postgres-server"
+
+postgres_host_data_path: "/opt/postgres/data"
+postgres_port: 5432
+
+postgres_consul_service_name: "postgres-server-main"
+postgres_consul_service_id: "postgres-server-main:1"
+postgres_consul_service_address: "127.0.0.1"
+
