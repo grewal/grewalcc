@@ -1,6 +1,6 @@
-# FILE: ansible/roles/authz_service/tasks/main.yml
+# Corrected: ansible/roles/authz_service/tasks/main.yml
 ---
-- name: Ensure BPF map base pinning directory exists
+- name: Ensure BPF map pinning directory exists
   ansible.builtin.file:
     path: "{{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
     state: directory
@@ -45,7 +45,7 @@
       HTTP_LISTEN_ADDR: ":{{ authz_service_http_port | default(9001) }}"
       GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port | default(9002) }}"
       REDIS_ADDR: "127.0.0.1:{{ redis_port | default(6379) }}"
-      REDIS_PASSWORD: "{{ redis_password }}"
+      REDIS_PASSWORD: "{{ redis_password_vault }}"
       LOG_LEVEL: "{{ authz_service_log_level | default('INFO') }}"
       XDP_INTERFACE_NAME: "{{ authz_service_xdp_interface | default('ens4') }}"
       XDP_OBJECT_PATH: "{{ authz_service_xdp_object_path | default('/app/ebpf/kernel/xdp_ip_blocker.o') }}"
@@ -55,6 +55,7 @@
       service: authz-service
       managed_by: ansible
 
+    # Using the more secure and specific capabilities approach
     privileged: false
     capabilities:
       - SYS_ADMIN
@@ -64,5 +65,5 @@
     volumes:
       - /sys/fs/bpf:/sys/fs/bpf:rshared
 
-  become: yes # 'become: yes' is needed to interact with the Docker daemon socket
+  become: yes
   tags: [authz_service, docker_container]

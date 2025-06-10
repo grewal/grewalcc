@@ -7,6 +7,7 @@
     owner: "root"
     group: "root"
     mode: '0755'
+  become: yes
 
 - name: Deploy Consul service definition for PostgreSQL
   ansible.builtin.template:
@@ -15,6 +16,7 @@
     owner: root
     group: root
     mode: '0644'
+  become: yes
   notify: Reload Consul Configuration
 
 - name: Ensure PostgreSQL container is running
@@ -25,6 +27,7 @@
     restart_policy: always
     network_mode: grewalnet
     ports:
+      # Publish to host loopback for admin access and health checks from host
       - "{{ postgres_consul_service_address }}:{{ postgres_port }}:{{ postgres_port }}"
     volumes:
       - "{{ postgres_host_data_path }}:/var/lib/postgresql/data"
@@ -32,3 +35,10 @@
       POSTGRES_DB: "{{ postgres_db_name_vault }}"
       POSTGRES_USER: "{{ postgres_user_vault }}"
       POSTGRES_PASSWORD: "{{ postgres_password_vault }}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ postgres_user_vault }} -d {{ postgres_db_name_vault }} -h localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+  become: yes
