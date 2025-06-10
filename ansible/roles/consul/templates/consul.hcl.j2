@@ -43,3 +43,7 @@ telemetry {
   prometheus_retention_time = "24h"  # Required positive value to enable endpoint
   disable_hostname = true            # Recommended when using Prometheus
 }
+
+# Allow health checks that execute scripts on the local agent.
+# Required for checks like `pg_isready`.
+enable_local_script_checks = true

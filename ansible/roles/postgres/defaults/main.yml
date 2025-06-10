@@ -1,35 +1,14 @@
+# ansible/roles/postgres/defaults/main.yml
 ---
-# roles/postgres/defaults/main.yml
-
-postgres_docker_image_repository: "postgres"
+postgres_docker_image_repo: "postgres"
 postgres_docker_image_tag: "17.5-alpine"
 postgres_container_name: "postgres-server"
 
 # Host path for persistent PostgreSQL data
-postgres_data_dir_host: "/opt/postgres/data"
-
-# Database credentials and initial database name
-postgres_user: "grewalauthadmin"
-postgres_password: "CHANGEME_IN_VAULT_grewalauthadmin_password"
-postgres_db_name: "grewal_auth_db"
-
-# Network settings
-postgres_network_name: "grewalnet"
-postgres_port_host: "127.0.0.1:5432" # Publish to host loopback for admin access
-postgres_port_container: "5432"
+postgres_host_data_path: "/opt/postgres/data"
+postgres_port: 5432
 
 # Consul service registration details
-postgres_consul_service_name: "postgres"
-postgres_consul_service_id: "postgres-server-main"
-# Tags can be useful for discovery or policy
-postgres_consul_service_tags:
-  - "database"
-  - "postgresql"
-  - "authentication-backend"
-
-# Backup settings
-postgres_backup_dir_host: "/opt/postgres/backups"
-postgres_backup_script_path_host: "/usr/local/bin/backup_postgres_gcs.sh"
-postgres_backup_gcs_bucket_path: "gs://gcc-terraform-state-bucket/db_backups/postgres"
-postgres_backup_cron_schedule_hour: "3"
-postgres_backup_cron_schedule_minute: "0"
+postgres_consul_service_name: "postgres-server-main"
+postgres_consul_service_id: "postgres-server-main:1"
+postgres_consul_service_address: "127.0.0.1"
