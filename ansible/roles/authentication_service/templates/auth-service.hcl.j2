@@ -1,0 +1,23 @@
+# ansible/roles/authentication_service/templates/auth-service.hcl.j2
+
+service {
+  name = "{{ authentication_service_consul_service_name }}"
+  id   = "{{ authentication_service_consul_service_id }}"
+  tags = [
+    {% for tag in authentication_service_consul_tags %}
+    "{{ tag }}",
+    {% endfor %}
+    "http"
+  ]
+  
+  port = {{ authentication_service_app_port_internal }}
+
+  check {
+    name     = "HTTP Health Check on /health"
+    // Consul agent on the host will check this service via its HOST PUBLISHED PORT
+    http     = "http://127.0.0.1:{{ authentication_service_host_published_port }}{{ authentication_service_consul_health_check_path }}"
+    method   = "GET"
+    interval = "{{ authentication_service_consul_health_check_interval }}"
+    timeout  = "{{ authentication_service_consul_health_check_timeout }}"
+  }
+}

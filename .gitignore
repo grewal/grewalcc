@@ -73,7 +73,16 @@ CMakeUserPresets.json
 *.out
 *.app
 
+# Ignore unnecessary bpf2go artifacts
+*_bpfeb.go
+*_bpfeb.o
+*_b2g.o
+
 # eBPF build artifacts
 services/security-service/ebpf/kernel/*.o
 services/security-service/ebpf/*.ll
 services/security-service/ebpf/*.bc
+
+# --- EXCEPTIONS ---
+# required runtime artifact for the Go authz-service.
+!/services/security-service/ebpf/kernel/xdp_ip_blocker.o

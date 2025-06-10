@@ -16,6 +16,7 @@
     - authz_service
     #- redis_exporter
     - envoy
+    - authentication_service
     - grewal-backend
 
   # ---- Handlers: Actions triggered by 'notify' ----
