@@ -1,0 +1,26 @@
+# ansible/roles/postgres/templates/postgres-service.hcl.j2
+service {
+  name = "{{ postgres_consul_service_name }}"
+  id   = "{{ postgres_consul_service_id }}"
+  port = {{ postgres_port }}
+
+  # Advertised address for clients on the bridge network to use.
+  address = "{{ postgres_consul_service_address }}"
+
+  checks = [
+    {
+      name     = "PostgreSQL TCP Connection",
+      # Correct: Check the IP address Consul knows for this service.
+      tcp      = "{{ postgres_consul_service_address }}:{{ postgres_port }}",
+      interval = "15s",
+      timeout  = "3s"
+    },
+    {
+      name     = "PostgreSQL Ready Check",
+      docker_container_id = "{{ postgres_container_name }}",
+      shell               = "/usr/bin/pg_isready -U {{ postgres_user_vault }} -d {{ postgres_db_name_vault }} -h localhost -p {{ postgres_port }}",
+      interval            = "20s",
+      timeout             = "5s"
+    }
+  ]
+}

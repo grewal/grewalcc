@@ -1,5 +1,6 @@
 authz_service_image_repository: "grewal/authz-service"
 authz_service_image_tag: "v0.6.2"
+
 authz_service_http_port: 9001 # Host port for HTTP access for Envoy
 authz_service_http_port_container: 9001 # for HTTP INSIDE container
 
