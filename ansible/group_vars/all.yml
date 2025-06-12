@@ -1,0 +1,19 @@
+---
+# Global variables for the grewal.cc environment
+
+# The GCP Project ID where the infrastructure is hosted.
+# Used for constructing names for resources like GCS buckets.
+gcp_project_id: "mysides" # Replace with your actual GCP Project ID if different
+
+# The name of the user-defined Docker bridge network for application services.
+docker_network_name: "grewalnet"
+
+# The address and port for the Consul agent's HTTP API.
+consul_host_address: "host.docker.internal"
+consul_api_port: 8500
+
+# The directory on the host where Consul service definition files are stored.
+consul_config_dir: "/etc/consul.d"
+
+# The port used by the PostgreSQL service for inter-container communication.
+postgres_port: 5432
