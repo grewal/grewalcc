@@ -1,26 +1,19 @@
-# ansible/roles/postgres/templates/postgres-service.hcl.j2
 service {
   name = "{{ postgres_consul_service_name }}"
   id   = "{{ postgres_consul_service_id }}"
-  port = {{ postgres_port }}
-
-  # The address field tells Consul where this service is listening.
-  # For a container published to the host's loopback, 127.0.0.1 is the
-  # correct address for the Consul agent (on the same host) to check.
-  address = "{{ postgres_consul_service_address }}"
-
-  tags = [
-    "database",
-    "postgresql"
-  ]
+  tags = {{ postgres_consul_tags | to_json }}
+  
+  # The port PUBLISHED to the host.
+  port = {{ postgres_host_published_port }}
+  
+  # The address on the HOST where the service can be reached.
+  address = "127.0.0.1"
 
   check {
-    name     = "PostgreSQL TCP Connection",
-    # It directly tests the IP and port Consul knows for this service.
-    tcp      = "{{ postgres_consul_service_address }}:{{ postgres_port }}",
-    interval = "15s",
-    timeout  = "3s",
-    # Deregister the service if the check is critical for this long.
-    deregister_critical_service_after = "3m"
+    name     = "postgres-tcp-health-check"
+    tcp      = "127.0.0.1:{{ postgres_host_published_port }}"
+    interval = "{{ postgres_consul_health_check_interval }}"
+    timeout  = "{{ postgres_consul_health_check_timeout }}"
+    deregister_critical_service_after = "5m"
   }
 }
