@@ -1,40 +1,39 @@
+# ansible/configure_vm.yml
 ---
 - name: Configure gcc-gem-a VM
   hosts: gcc-gem-a
   become: yes
 
-  # Includes consul_bind_address from secrets.yml
   vars_files:
     - vars/secrets.yml
 
   roles:
+    # NOTE: Monitoring stack is paused to conserve resources on e2-micro
     #- node_exporter
     #- prometheus
-    # - grafana # (Memory constraint) run locally via SSH tunnel
+    # - grafana
     - consul
     - redis
+    - postgres
     - authz_service
     #- redis_exporter
     - envoy
+    - authentication_service
     - grewal-backend
 
-  # ---- Handlers: Actions triggered by 'notify' ----
   handlers:
-    # Handler for the Consul role/other roles to reload consul config
     - name: Reload Consul Configuration
       listen: "Reload Consul Configuration"
-      ansible.builtin.command: "consul reload -http-addr={{ consul_bind_address }}:8500"
+      ansible.builtin.command: "consul reload -http-addr={{ consul_host_ip }}:8500"
       changed_when: true
       become: yes
 
-    # Handler needed when systemd unit files change
     - name: Reload systemd daemon
       listen: "Reload systemd daemon"
       ansible.builtin.systemd:
         daemon_reload: yes
       become: yes
 
-    # Handler to restart the consul service
     - name: Restart consul service
       listen: "Restart consul service"
       ansible.builtin.systemd:
@@ -42,7 +41,6 @@
         state: restarted
       become: yes
 
-    # Handler to restart the prometheus service
     - name: Restart prometheus service
       listen: "Restart prometheus service"
       ansible.builtin.systemd:
@@ -50,7 +48,6 @@
         state: restarted
       become: yes
 
-    # Handler to restart the envoy service
     - name: Restart envoy service
       listen: "Restart envoy service"
       ansible.builtin.systemd:

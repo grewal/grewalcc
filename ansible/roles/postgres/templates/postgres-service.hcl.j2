@@ -1,26 +1,19 @@
-# ansible/roles/postgres/templates/postgres-service.hcl.j2
 service {
   name = "{{ postgres_consul_service_name }}"
   id   = "{{ postgres_consul_service_id }}"
-  port = {{ postgres_port }}
+  tags = {{ postgres_consul_tags | to_json }}
+  
+  # The port PUBLISHED to the host.
+  port = {{ postgres_host_published_port }}
+  
+  # The address on the HOST where the service can be reached.
+  address = "127.0.0.1"
 
-  # Advertised address for clients on the bridge network to use.
-  address = "{{ postgres_consul_service_address }}"
-
-  checks = [
-    {
-      name     = "PostgreSQL TCP Connection",
-      # Correct: Check the IP address Consul knows for this service.
-      tcp      = "{{ postgres_consul_service_address }}:{{ postgres_port }}",
-      interval = "15s",
-      timeout  = "3s"
-    },
-    {
-      name     = "PostgreSQL Ready Check",
-      docker_container_id = "{{ postgres_container_name }}",
-      shell               = "/usr/bin/pg_isready -U {{ postgres_user_vault }} -d {{ postgres_db_name_vault }} -h localhost -p {{ postgres_port }}",
-      interval            = "20s",
-      timeout             = "5s"
-    }
-  ]
+  check {
+    name     = "postgres-tcp-health-check"
+    tcp      = "127.0.0.1:{{ postgres_host_published_port }}"
+    interval = "{{ postgres_consul_health_check_interval }}"
+    timeout  = "{{ postgres_consul_health_check_timeout }}"
+    deregister_critical_service_after = "5m"
+  }
 }

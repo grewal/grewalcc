@@ -1,0 +1,21 @@
+# ansible/roles/authentication_service/defaults/main.yml
+---
+# Defaults for the Rust `auth-service`
+auth_service_image_repository: "grewal/auth-service"
+auth_service_image_tag: "0.1.5"
+
+auth_service_container_name: "auth-service"
+auth_service_host_port: 3000
+auth_service_container_port: 3000
+auth_service_host_ip: "0.0.0.0"
+auth_service_log_level: "info,authentication=debug,sqlx=warn,jsonwebtoken=debug"
+
+auth_service_consul_service_name: "auth-service"
+auth_service_consul_service_id: "auth-service-rust-instance-1"
+auth_service_consul_health_check_path: "/health"
+auth_service_consul_health_check_interval: "10s"
+auth_service_consul_health_check_timeout: "5s"
+auth_service_consul_tags:
+  - "rust"
+  - "authentication"
+  - "grewal.cc"
