@@ -1,0 +1,21 @@
+service {
+  name = "{{ auth_service_consul_service_name }}"
+  id   = "{{ auth_service_consul_service_id }}"
+  tags = {{ auth_service_consul_tags | to_json }}
+  
+  # The port PUBLISHED to the host, not the internal container port.
+  port = {{ auth_service_host_port }}
+  
+  # The address on the HOST where the service can be reached.
+  # Publish the port to 127.0.0.1, Consul must use this address.
+  address = "127.0.0.1"
+
+  check {
+    name     = "auth-service-http-health-check"
+    http     = "http://127.0.0.1:{{ auth_service_host_port }}{{ auth_service_consul_health_check_path }}"
+    method   = "GET"
+    interval = "{{ auth_service_consul_health_check_interval }}"
+    timeout  = "{{ auth_service_consul_health_check_timeout }}"
+    deregister_critical_service_after = "5m"
+  }
+}

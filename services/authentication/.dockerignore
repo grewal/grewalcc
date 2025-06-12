@@ -1,0 +1,15 @@
+# Ignore Git directory
+.git
+.gitignore
+
+# Ignore local target build artifacts
+target/
+**/target/
+
+# Ignore local .env file
+.env
+**/.env
+
+# Ignore Rust Rover / IntelliJ / VSCode specific files
+.idea/
+.vscode/

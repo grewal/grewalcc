@@ -1,26 +1,31 @@
 # File: services/security-service/ebpf/Makefile
 CLANG ?= clang
-BPF_TARGET_ARCH ?= bpf
-TARGET = kernel/xdp_ip_blocker.o
 SOURCE = kernel/xdp_ip_blocker.c
 
-CFLAGS = -O2 -g -target $(BPF_TARGET_ARCH) -Wall \
-         -I/usr/include/$(shell uname -m)-linux-gnu \
-         -I/usr/include \
-         -Wno-unused-value -Wno-pointer-sign \
-         -Wno-compare-distinct-pointer-types \
-         -Wno-address-of-packed-member \
-         -Wno-tautological-compare
+RUNTIME_TARGET = kernel/xdp_ip_blocker.o
+B2G_TARGET = kernel/xdp_ip_blocker_b2g.o
 
-all: $(TARGET)
+BASE_CFLAGS = -O2 -target bpf -Wall \
+             -I/usr/include/x86_64-linux-gnu \
+             -I/usr/include
 
-$(TARGET): $(SOURCE)
-	@echo "  CLANG $(SOURCE) -> $@"
-	@$(CLANG) $(CFLAGS) -c $(SOURCE) -o $@
+RUNTIME_CFLAGS = $(BASE_CFLAGS) -g
+B2G_CFLAGS = $(BASE_CFLAGS)
+
+.PHONY: all clean runtime b2g
+
+all: runtime b2g
+
+runtime: $(RUNTIME_TARGET)
+$(RUNTIME_TARGET): $(SOURCE)
+	@echo "  CLANG (runtime) $(SOURCE) -> $@"
+	@$(CLANG) $(RUNTIME_CFLAGS) -c $(SOURCE) -o $@
+
+b2g: $(B2G_TARGET)
+$(B2G_TARGET): $(SOURCE)
+	@echo "  CLANG (bpf2go)  $(SOURCE) -> $@"
+	@$(CLANG) $(B2G_CFLAGS) -c $(SOURCE) -o $@
 
 clean:
 	@echo "  CLEAN"
-	@rm -f $(TARGET)
-	@rm -f *.ll *.bc
-
-.PHONY: all clean
+	@rm -f $(RUNTIME_TARGET) $(B2G_TARGET)
