@@ -1,14 +1,5 @@
+---
 # ansible/roles/authentication_service/tasks/main.yml
-
-- name: Ensure grewal.cc network exists
-  community.docker.docker_network:
-    name: "{{ docker_network_name }}"
-    state: present
-
-- name: Pull the latest auth-service image
-  community.docker.docker_image:
-    name: "{{ auth_service_image_repository }}:{{ auth_service_image_tag }}"
-    source: pull
 
 - name: Build DATABASE_URL with explicit string formatting and encoding
   ansible.builtin.set_fact:
@@ -19,12 +10,12 @@
   community.docker.docker_container:
     name: "{{ auth_service_container_name }}"
     image: "{{ auth_service_image_repository }}:{{ auth_service_image_tag }}"
-    pull: false
     state: started
+    pull: true             # Always check for a newer image version before starting.
+    recreate: true         # Recreate container if image or any other parameter changes.
     restart_policy: always
-    network_mode: "{{ docker_network_name }}"
     ports:
-      - "{{ auth_service_host_port }}:{{ auth_service_container_port }}"
+      - "127.0.0.1:{{ auth_service_host_port }}:{{ auth_service_container_port }}"
     networks:
       - name: "{{ docker_network_name }}"
         aliases:
@@ -46,8 +37,9 @@
 - name: Deploy auth-service Consul service definition
   ansible.builtin.template:
     src: auth-service.hcl.j2
-    dest: /etc/consul.d/auth-service.hcl
+    dest: "/etc/consul.d/auth-service.hcl"
     owner: root
     group: root
     mode: '0644'
+  become: yes
   notify: Reload Consul Configuration

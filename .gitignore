@@ -82,6 +82,7 @@ CMakeUserPresets.json
 services/security-service/ebpf/kernel/*.o
 services/security-service/ebpf/*.ll
 services/security-service/ebpf/*.bc
+services/security-service/ebpf/runtime
 
 # --- EXCEPTIONS ---
 # required runtime artifact for the Go authz-service.

@@ -1,41 +1,36 @@
-// FILE: services/security-service/go/ebpfctrl/controller.go
-
 package ebpfctrl
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
 
+//	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
 )
 
-const (
-	DefaultXDPObjPath         = "/app/ebpf/kernel/xdp_ip_blocker.o"
-	DefaultXDPProgramName     = "xdp_ip_blocker_prog"
-	DefaultXDPLinkInterface   = "ens4"
-	DefaultBPFMapRootPath     = "/sys/fs/bpf/grewalcc"
-	DefaultIPBlocklistMapName = "ip_blocklist_map"
-)
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -Wall -I/usr/include/bpf" -type ip_block_entry xdp_ip_blocker ../../ebpf/kernel/xdp_ip_blocker.c -- -I../../ebpf/headers
 
 type XDPController struct {
 	logger                *slog.Logger
-	objPath               string
 	linkInterfaceName     string
 	actualMapPinPath      string
-	xdpObjs               xdp_ip_blockerObjects // Use the specific generated type
+	xdpObjs               xdp_ip_blockerObjects
 	attachedLink          link.Link
 	linkInterfaceResolved *net.Interface
 	isInitialized         bool
 }
 
-func New(logger *slog.Logger, interfaceName string) (*XDPController, error) {
+func New(logger *slog.Logger, interfaceName string, mapRootPath string) (*XDPController, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("logger is required")
 	}
+
 	iface, err := net.InterfaceByName(interfaceName)
 	if err != nil {
 		return nil, fmt.Errorf("getting network interface %s: %w", interfaceName, err)
@@ -43,10 +38,9 @@ func New(logger *slog.Logger, interfaceName string) (*XDPController, error) {
 
 	ctrl := &XDPController{
 		logger:                logger.With("component", "xdp_controller", "interface", interfaceName),
-		objPath:               DefaultXDPObjPath,
 		linkInterfaceName:     interfaceName,
 		linkInterfaceResolved: iface,
-		actualMapPinPath:      filepath.Join(DefaultBPFMapRootPath, DefaultIPBlocklistMapName),
+		actualMapPinPath:      filepath.Join(mapRootPath, "ip_blocklist_map"),
 	}
 
 	if err := ctrl.loadAndAttachProgram(); err != nil {
@@ -57,7 +51,6 @@ func New(logger *slog.Logger, interfaceName string) (*XDPController, error) {
 	return ctrl, nil
 }
 
-// ensureCleanPinPath ensures the pin directory exists and removes any stale pin file.
 func (xc *XDPController) ensureCleanPinPath() error {
 	pinDir := filepath.Dir(xc.actualMapPinPath)
 	if err := os.MkdirAll(pinDir, 0755); err != nil {
@@ -69,19 +62,17 @@ func (xc *XDPController) ensureCleanPinPath() error {
 		if err := os.Remove(xc.actualMapPinPath); err != nil {
 			return fmt.Errorf("removing stale pin file %s: %w", xc.actualMapPinPath, err)
 		}
-	} else if !os.IsNotExist(err) {
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("checking pin file %s: %w", xc.actualMapPinPath, err)
 	}
 
 	return nil
 }
 
-// loadAndAttachProgram contains the core initialization logic.
 func (xc *XDPController) loadAndAttachProgram() error {
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return fmt.Errorf("removing memlock rlimit: %w", err)
 	}
-
 	if err := xc.ensureCleanPinPath(); err != nil {
 		return fmt.Errorf("preparing pin path: %w", err)
 	}
@@ -90,7 +81,6 @@ func (xc *XDPController) loadAndAttachProgram() error {
 	if err := loadXdp_ip_blockerObjects(&objs, nil); err != nil {
 		return fmt.Errorf("loading eBPF objects: %w", err)
 	}
-
 
 	if err := objs.IpBlocklistMap.Pin(xc.actualMapPinPath); err != nil {
 		_ = objs.Close()
@@ -132,16 +122,19 @@ func (xc *XDPController) IsInitialized() bool {
 
 func (xc *XDPController) Close() error {
 	var firstErr error
+
 	if xc.attachedLink != nil {
 		if err := xc.attachedLink.Close(); err != nil {
 			firstErr = fmt.Errorf("closing XDP link: %w", err)
 		}
 	}
+
 	if err := xc.xdpObjs.Close(); err != nil {
 		if firstErr == nil {
 			firstErr = fmt.Errorf("closing eBPF objects: %w", err)
 		}
 	}
+
 	xc.isInitialized = false
 	return firstErr
 }
@@ -151,12 +144,12 @@ func (xc *XDPController) SyncIPBlocklistToMap(currentIPsFromConsul map[string]st
 		return fmt.Errorf("cannot sync, XDP controller not initialized")
 	}
 
-	ipsCurrentlyInBPFMap := make(map[uint32]struct{})
+	keysInBPFMap := make(map[uint32]struct{})
 	var mapKeyNBO_u32 uint32
 	var mapVal uint8
 	iter := xc.xdpObjs.IpBlocklistMap.Iterate()
 	for iter.Next(&mapKeyNBO_u32, &mapVal) {
-		ipsCurrentlyInBPFMap[mapKeyNBO_u32] = struct{}{}
+		keysInBPFMap[mapKeyNBO_u32] = struct{}{}
 	}
 	if err := iter.Err(); err != nil {
 		return fmt.Errorf("iterating eBPF map: %w", err)
@@ -166,31 +159,39 @@ func (xc *XDPController) SyncIPBlocklistToMap(currentIPsFromConsul map[string]st
 	for ipStr := range currentIPsFromConsul {
 		ipNBO_u32, err := ipStringToNBOUint32(ipStr)
 		if err != nil {
+			xc.logger.Warn("Failed to parse IP from Consul, skipping", "ip", ipStr, "error", err)
 			continue
 		}
-		if _, exists := ipsCurrentlyInBPFMap[ipNBO_u32]; exists {
-			delete(ipsCurrentlyInBPFMap, ipNBO_u32)
-			continue
+
+		if _, exists := keysInBPFMap[ipNBO_u32]; exists {
+			delete(keysInBPFMap, ipNBO_u32)
+		} else {
+			if err := xc.xdpObjs.IpBlocklistMap.Put(ipNBO_u32, valToAdd); err != nil {
+				xc.logger.Error("Failed to add IP to eBPF map", "ip", ipStr, "error", err)
+			} else {
+				xc.logger.Info("Added IP to blocklist map", "ip", ipStr)
+			}
 		}
-		_ = xc.xdpObjs.IpBlocklistMap.Put(ipNBO_u32, valToAdd)
 	}
 
-	for ipNBO_u32_toRemove := range ipsCurrentlyInBPFMap {
-		_ = xc.xdpObjs.IpBlocklistMap.Delete(ipNBO_u32_toRemove)
+	for ipNBO_u32_toRemove := range keysInBPFMap {
+		if err := xc.xdpObjs.IpBlocklistMap.Delete(ipNBO_u32_toRemove); err != nil {
+			xc.logger.Error("Failed to delete stale IP from eBPF map", "ip_nbo_u32", ipNBO_u32_toRemove, "error", err)
+		}
 	}
-
+	xc.logger.Info("Successfully synced IP blocklist to eBPF map", "consul_count", len(currentIPsFromConsul))
 	return nil
 }
 
-// ipStringToNBOUint32 converts an IPv4 string to its uint32 Network Byte Order representation.
 func ipStringToNBOUint32(ipStr string) (uint32, error) {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
-		return 0, fmt.Errorf("invalid IP: %s", ipStr)
+		return 0, fmt.Errorf("invalid IP string: %s", ipStr)
 	}
 	ipv4 := ip.To4()
 	if ipv4 == nil {
-		return 0, fmt.Errorf("not an IPv4: %s", ipStr)
+		return 0, fmt.Errorf("not an IPv4 address: %s", ipStr)
 	}
-	return uint32(ipv4[0])<<24 | uint32(ipv4[1])<<16 | uint32(ipv4[2])<<8 | uint32(ipv4[3]), nil
+	return binary.BigEndian.Uint32(ipv4), nil
 }
+

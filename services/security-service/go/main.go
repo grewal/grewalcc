@@ -116,7 +116,7 @@ func main() {
 
 	if cfg.XDPEnabledFromEnv {
 		logger.Info("XDP is enabled via environment config, initializing controller...")
-		controller, xdpErr := ebpfctrl.New(logger, cfg.XDPLinkInterfaceName)
+		controller, xdpErr := ebpfctrl.New(logger, cfg.XDPLinkInterfaceName, "/sys/fs/bpf/grewalcc")
 		if xdpErr != nil {
 			logger.Error("Failed to initialize and attach XDP program", "error", xdpErr)
 			logger.Warn("Continuing without XDP kernel-level IP blocking active.")
