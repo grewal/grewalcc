@@ -1,19 +1,25 @@
+# ansible/roles/postgres/templates/postgres-service.hcl.j2
+
 service {
   name = "{{ postgres_consul_service_name }}"
-  id   = "{{ postgres_consul_service_id }}"
-  tags = {{ postgres_consul_tags | to_json }}
-  
-  # The port PUBLISHED to the host.
-  port = {{ postgres_host_published_port }}
-  
-  # The address on the HOST where the service can be reached.
-  address = "127.0.0.1"
+  id   = "{{ postgres_consul_service_name }}-main"
+  tags = {{ postgres_consul_tags }}
 
+  # Explicitly tell Consul the service is available on the host's loopback IP.
+  # This is critical for other services on the host network to find it.
+  address = "127.0.0.1"
+  port    = {{ postgres_host_published_port }}
+
+  # --- CORRECTED HEALTH CHECK ---
+  # This check tells the Consul agent (running on the host network)
+  # to connect directly to the loopback IP and port where PostgreSQL is published.
+  # This removes any reliance on DNS or scripts inside the container.
   check {
-    name     = "postgres-tcp-health-check"
-    tcp      = "127.0.0.1:{{ postgres_host_published_port }}"
-    interval = "{{ postgres_consul_health_check_interval }}"
-    timeout  = "{{ postgres_consul_health_check_timeout }}"
+    id                         = "postgres-tcp-check"
+    name                       = "PostgreSQL TCP Port Check"
+    tcp                        = "127.0.0.1:{{ postgres_host_published_port }}"
+    interval                   = "10s"
+    timeout                    = "2s"
     deregister_critical_service_after = "5m"
   }
 }

@@ -1,49 +1,43 @@
 ---
-# tasks/main.yml for consul role
+# ansible/roles/consul/tasks/main.yml
 
 - name: Ensure Consul config directory exists
   ansible.builtin.file:
     path: /etc/consul.d
     state: directory
-    owner: root # Changed owner/group to root as it's system config
+    owner: root
     group: root
     mode: '0755'
   become: yes
 
-# Ensure the HOST data directory exists before mounting it into the container
 - name: Ensure Consul host data directory exists
   ansible.builtin.file:
-    path: /opt/consul/data # Path on the HOST that gets mounted
+    path: /opt/consul/data
     state: directory
-    owner: '100'  # consul user UID inside container
-    group: '1000' # consul user GID inside container
-    mode: '0750'  # Allow write for consul user/group
+    owner: '100'
+    group: '1000'
+    mode: '0750'
   become: yes
 
 - name: Deploy Consul HCL configuration file
   ansible.builtin.template:
     src: consul.hcl.j2
     dest: /etc/consul.d/consul.hcl
-    owner: root # File owned by root
+    owner: root
     group: root
-    mode: '0644' # Readable by others (like consul user in container)
+    mode: '0644'
   become: yes
-  # If the main HCL config changes, we likely need to restart consul
   notify: Restart consul service
 
 - name: Deploy Consul systemd unit file
   ansible.builtin.template:
-    src: consul.service.j2 # The file we fixed in Step 1
+    src: consul.service.j2
     dest: /etc/systemd/system/consul.service
     owner: root
     group: root
     mode: '0644'
   become: yes
-  # If the systemd unit file itself changes, we MUST reload the daemon
-  # and then restart the service. Notify BOTH handlers.
-  notify:
-    - Reload systemd daemon
-    - Restart consul service
+  notify: Restart consul service
 
 - name: Ensure Consul service is started and enabled
   ansible.builtin.systemd:
