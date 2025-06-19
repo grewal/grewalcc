@@ -1,42 +1,21 @@
 # ansible/roles/authentication_service/defaults/main.yml
+---
+# Defaults for the Rust `auth-service`
+auth_service_image_repository: "grewal/auth-service"
+auth_service_image_tag: "0.1.5"
 
-authentication_service_image_name: "grewal/auth-service"
-authentication_service_image_tag: "0.1.5"
-authentication_service_container_name: "auth-service" # Name of the running Docker container
+auth_service_container_name: "auth-service"
+auth_service_host_port: 3000
+auth_service_container_port: 3000
+auth_service_host_ip: "0.0.0.0"
+auth_service_log_level: "info,authentication=debug,sqlx=warn,jsonwebtoken=debug"
 
-# --- Container Configuration ---
-authentication_service_app_host_internal: "0.0.0.0" # How the app listens INSIDE the container
-authentication_service_app_port_internal: 3000    # Port the app listens on INSIDE the container
-
-# --- Host Port Publishing ---
-# Port on the VM host that maps to the internal container port
-authentication_service_host_published_port: 3000
-
-# --- Networking ---
-authentication_service_docker_network: "grewalnet" # bridge network
-
-# --- Logging (for the Rust app, passed as ENV) ---
-authentication_service_rust_log: "info,authentication=debug,sqlx=warn,jsonwebtoken=debug"
-
-# --- Database URL for the container ---
-# Note: 'postgres-server' is the hostname of the PostgreSQL container on the 'grewalnet' Docker network.
-# 'postgres_password_vault' will be sourced from Ansible Vault.
-authentication_service_database_url_template: "postgresql://grewalauthadmin:{{ postgres_password_vault }}@postgres-server:5432/grewal_auth_db"
-
-# --- JWT Configuration (passed as ENV, sourced from Vault) ---
-# These will directly use the vault variable names when setting environment variables for the container.
-# - auth_service_jwt_private_key_pem_vault
-# - auth_service_jwt_public_key_pem_vault
-# - auth_service_jwt_access_token_expires_in_seconds_vault
-# - auth_service_jwt_algorithm_vault
-
-# --- Consul Service Registration ---
-authentication_service_consul_service_name: "auth-service"
-authentication_service_consul_service_id: "auth-service-rust-instance-1" # Unique ID for this instance
-authentication_service_consul_health_check_path: "/health" # App's health check endpoint
-authentication_service_consul_health_check_interval: "10s"
-authentication_service_consul_health_check_timeout: "5s"
-authentication_service_consul_tags:
+auth_service_consul_service_name: "auth-service"
+auth_service_consul_service_id: "auth-service-rust-instance-1"
+auth_service_consul_health_check_path: "/health"
+auth_service_consul_health_check_interval: "120s"
+auth_service_consul_health_check_timeout: "10s"
+auth_service_consul_tags:
   - "rust"
   - "authentication"
   - "grewal.cc"

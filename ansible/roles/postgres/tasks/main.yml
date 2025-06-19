@@ -1,44 +1,36 @@
-# ansible/roles/postgres/tasks/main.yml
 ---
+# tasks file for postgres
 - name: Ensure PostgreSQL host data directory exists
   ansible.builtin.file:
     path: "{{ postgres_host_data_path }}"
     state: directory
-    owner: "root"
-    group: "root"
-    mode: '0755'
-  become: yes
-
-- name: Deploy Consul service definition for PostgreSQL
-  ansible.builtin.template:
-    src: postgres-service.hcl.j2
-    dest: "/etc/consul.d/{{ postgres_consul_service_name }}.hcl"
     owner: root
     group: root
-    mode: '0644'
-  become: yes
-  notify: Reload Consul Configuration
+    mode: '0755'
+  tags:
+    - postgres
 
 - name: Ensure PostgreSQL container is running
   community.docker.docker_container:
     name: "{{ postgres_container_name }}"
-    image: "{{ postgres_docker_image_repo }}:{{ postgres_docker_image_tag }}"
+    image: "{{ postgres_image_name }}:{{ postgres_image_tag }}"
     state: started
     restart_policy: always
-    network_mode: grewalnet
-    ports:
-      # Publish to host loopback for admin access and health checks from host
-      - "{{ postgres_consul_service_address }}:{{ postgres_port }}:{{ postgres_port }}"
+    pull: true
+    networks:
+      - name: "{{ postgres_docker_network }}"
+    env:
+      POSTGRES_PASSWORD: "{{ postgres_password_vault }}"
+      POSTGRES_USER: "{{ postgres_user_vault }}"
+      POSTGRES_DB: "{{ postgres_db_name_vault }}"
     volumes:
       - "{{ postgres_host_data_path }}:/var/lib/postgresql/data"
-    env:
-      POSTGRES_DB: "{{ postgres_db_name_vault }}"
-      POSTGRES_USER: "{{ postgres_user_vault }}"
-      POSTGRES_PASSWORD: "{{ postgres_password_vault }}"
+    ports:
+      - "127.0.0.1:{{ postgres_host_published_port }}:{{ postgres_container_port }}"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U {{ postgres_user_vault }} -d {{ postgres_db_name_vault }} -h localhost"]
-      interval: 30s
+      test: ["CMD-SHELL", "pg_isready -U {{ postgres_user }} -d {{ postgres_db_name }}"]
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 60s
-  become: yes
+  tags:
+    - postgres

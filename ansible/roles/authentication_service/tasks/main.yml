@@ -1,50 +1,45 @@
-# ansible/roles/authentication_service/tasks/main.yml
 ---
-- name: "Ensure Docker network '{{ authentication_service_docker_network }}' exists"
-  community.docker.docker_network:
-    name: "{{ authentication_service_docker_network }}"
-    state: present
-  tags: [authentication_service, docker_network]
+# ansible/roles/authentication_service/tasks/main.yml
 
-- name: "Pull '{{ authentication_service_image_name }}:{{ authentication_service_image_tag }}' Docker image"
-  community.docker.docker_image:
-    name: "{{ authentication_service_image_name }}"
-    tag: "{{ authentication_service_image_tag }}"
-    source: pull
-  tags: [authentication_service, docker_image_pull]
+- name: Build DATABASE_URL with explicit string formatting and encoding
+  ansible.builtin.set_fact:
+    auth_service_database_url: >-
+      postgresql://{{ postgres_user_vault | urlencode }}:{{ postgres_password_vault | urlencode }}@postgres-server:{{ postgres_port | string }}/{{ postgres_db_name_vault }}
 
-- name: "Ensure {{ authentication_service_container_name }} container is running with correct configuration"
+- name: Ensure auth-service container is running
   community.docker.docker_container:
-    name: "{{ authentication_service_container_name }}"
-    image: "{{ authentication_service_image_name }}:{{ authentication_service_image_tag }}"
+    name: "{{ auth_service_container_name }}"
+    image: "{{ auth_service_image_repository }}:{{ auth_service_image_tag }}"
     state: started
-    restart_policy: unless-stopped
-    network_mode: "{{ authentication_service_docker_network }}" # Connect to bridge network
-    published_ports:
-      - "{{ authentication_service_host_published_port }}:{{ authentication_service_app_port_internal }}" # e.g., "3000:3000"
+    pull: true             # Always check for a newer image version before starting.
+    recreate: true         # Recreate container if image or any other parameter changes.
+    restart_policy: always
+    ports:
+      - "127.0.0.1:{{ auth_service_host_port }}:{{ auth_service_container_port }}"
+    networks:
+      - name: "{{ docker_network_name }}"
+        aliases:
+          - auth-service
+          - auth-service.grewalnet
     env:
-      APP_HOST: "{{ authentication_service_app_host_internal }}"
-      APP_PORT: "{{ authentication_service_app_port_internal | string }}" # Et is a string for env var
-      RUST_LOG: "{{ authentication_service_rust_log }}"
-      DATABASE_URL: "{{ authentication_service_database_url_template }}" # Uses postgres_password_vault
-      # JWT Environment Variables, sourcing directly from vault variables
-      # These vault variables MUST be defined in your secrets.yml or passed as extra-vars
+      RUST_LOG: "{{ auth_service_log_level }}"
+      APP_HOST: "{{ auth_service_host_ip }}"
+      APP_PORT: "{{ auth_service_container_port | string }}"
+      DATABASE_URL: "{{ auth_service_database_url }}"
       AUTH_SERVICE_JWT_PRIVATE_KEY_PEM: "{{ auth_service_jwt_private_key_pem_vault }}"
       AUTH_SERVICE_JWT_PUBLIC_KEY_PEM: "{{ auth_service_jwt_public_key_pem_vault }}"
-      AUTH_SERVICE_JWT_ACCESS_TOKEN_EXPIRES_IN_SECONDS: "{{ auth_service_jwt_access_token_expires_in_seconds_vault | string }}"
+      AUTH_SERVICE_JWT_ACCESS_TOKEN_EXPIRES_IN_SECONDS: "{{ auth_service_jwt_access_token_expires_in_seconds_vault }}"
       AUTH_SERVICE_JWT_ALGORITHM: "{{ auth_service_jwt_algorithm_vault }}"
     labels:
-      managed_by: ansible
-      service: "{{ authentication_service_consul_service_name }}"
-  notify: Reload Consul Configuration
-  tags: [authentication_service, docker_container]
+      service: "auth-service"
+      project: "grewal.cc"
 
-- name: "Deploy Consul service definition for {{ authentication_service_consul_service_name }}"
+- name: Deploy auth-service Consul service definition
   ansible.builtin.template:
     src: auth-service.hcl.j2
-    dest: "/etc/consul.d/{{ authentication_service_consul_service_name }}.hcl"
+    dest: "/etc/consul.d/auth-service.hcl"
     owner: root
     group: root
     mode: '0644'
+  become: yes
   notify: Reload Consul Configuration
-  tags: [authentication_service, consul_config]

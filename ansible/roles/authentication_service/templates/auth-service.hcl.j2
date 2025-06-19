@@ -1,23 +1,21 @@
-# ansible/roles/authentication_service/templates/auth-service.hcl.j2
-
 service {
-  name = "{{ authentication_service_consul_service_name }}"
-  id   = "{{ authentication_service_consul_service_id }}"
-  tags = [
-    {% for tag in authentication_service_consul_tags %}
-    "{{ tag }}",
-    {% endfor %}
-    "http"
-  ]
+  name = "{{ auth_service_consul_service_name }}"
+  id   = "{{ auth_service_consul_service_id }}"
+  tags = {{ auth_service_consul_tags | to_json }}
   
-  port = {{ authentication_service_app_port_internal }}
+  # The port PUBLISHED to the host, not the internal container port.
+  port = {{ auth_service_host_port }}
+  
+  # The address on the HOST where the service can be reached.
+  # Publish the port to 127.0.0.1, Consul must use this address.
+  address = "127.0.0.1"
 
   check {
-    name     = "HTTP Health Check on /health"
-    // Consul agent on the host will check this service via its HOST PUBLISHED PORT
-    http     = "http://127.0.0.1:{{ authentication_service_host_published_port }}{{ authentication_service_consul_health_check_path }}"
+    name     = "auth-service-http-health-check"
+    http     = "http://127.0.0.1:{{ auth_service_host_port }}{{ auth_service_consul_health_check_path }}"
     method   = "GET"
-    interval = "{{ authentication_service_consul_health_check_interval }}"
-    timeout  = "{{ authentication_service_consul_health_check_timeout }}"
+    interval = "{{ auth_service_consul_health_check_interval }}"
+    timeout  = "{{ auth_service_consul_health_check_timeout }}"
+    deregister_critical_service_after = "5m"
   }
 }
