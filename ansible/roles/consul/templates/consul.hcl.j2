@@ -1,4 +1,4 @@
-# ansible/roles/consul/templates/consul.hcl.j2
+# templates/consul.hcl.j2
 # Deployed by Ansible
 
 data_dir = "/consul/data"
@@ -7,7 +7,6 @@ data_dir = "/consul/data"
 server = true
 bootstrap_expect = 1
 
-# Allow health checks that execute scripts on the local agent.
 enable_local_script_checks = true
 
 # --- Increase Rate Limits (Temporary Diagnostic) ---
@@ -17,6 +16,7 @@ limits {
   rpc_max_burst = 800             # Default 400
 }
 # ----------------------------------------------------
+
 
 # Host networking configuration - use the internal IP variable
 bind_addr = "{{ consul_host_ip }}"
@@ -33,10 +33,13 @@ ports {
   dns = 8600
 }
 
+# Note: HTTP API defaults to 8500
+
 log_level = "INFO"
+# enable_syslog = true
 
 # Enable Prometheus Metrics Endpoint
 telemetry {
-  prometheus_retention_time = "24h"
-  disable_hostname = true
+  prometheus_retention_time = "24h"  # Required positive value to enable endpoint
+  disable_hostname = true            # Recommended when using Prometheus
 }
