@@ -1,6 +1,7 @@
 # {{ ansible_managed }}
 [Unit]
-Description=Envoy Proxy Container (Host Network)
+Description=Envoy Proxy Container
+# Gemi: Description updated to reflect it's no longer on host network.
 Requires=docker.service network-online.target consul.service dnsmasq.service
 After=docker.service network-online.target consul.service dnsmasq.service
 
@@ -13,16 +14,21 @@ ExecStartPre=-/usr/bin/docker stop envoy-svc
 ExecStartPre=-/usr/bin/docker rm envoy-svc
 ExecStartPre=-/usr/bin/docker pull {{ envoy_image_repository }}:{{ envoy_image_tag }}
 
-ExecStart=/usr/bin/docker run --rm --network host --name envoy-svc \
-  -u root \
-  --entrypoint "/usr/local/bin/envoy" \
+# Gemi: The ExecStart line has been corrected to use the 'grewalnet' bridge network.
+# The unnecessary -u root and --entrypoint flags have been removed as they are
+# no longer needed when not binding to privileged host ports.
+ExecStart=/usr/bin/docker run --rm --name envoy-svc \
+  --network {{ docker_network_name }} \
+  -p 80:80 \
+  -p 443:443 \
+  -p {{ envoy_admin_port }}:{{ envoy_admin_port }} \
   -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro \
   -v /etc/letsencrypt:/etc/letsencrypt:ro \
   {{ envoy_image_repository }}:{{ envoy_image_tag }} \
   -c /etc/envoy/envoy.yaml \
   --service-node edge-envoy-instance-1 \
-  --service-cluster grewalcc_services
-  
+  --service-cluster grewalcc_services \
+  -l debug
 
 ExecStop=/usr/bin/docker stop envoy-svc
 

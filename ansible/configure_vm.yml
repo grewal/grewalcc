@@ -7,6 +7,13 @@
   vars_files:
     - vars/secrets.yml
 
+  pre_tasks:
+    - name: Ensure grewalnet Docker network exists
+      community.docker.docker_network:
+        name: grewalnet
+        driver: bridge
+      tags: [always]
+
   roles:
     # NOTE: Monitoring stack is paused to conserve resources on e2-micro
     #- node_exporter
@@ -16,10 +23,10 @@
     - redis
     - postgres
     - authz_service
-    #- redis_exporter
-    - envoy
     - authentication_service
     - grewal-backend
+    #- redis_exporter
+    - envoy
 
   handlers:
     - name: Reload Consul Configuration
