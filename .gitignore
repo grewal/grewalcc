@@ -6,7 +6,6 @@ dist/
 grewal.log
 nohup.out
 *.o
-
 backups/
 
 # Ignore generated Protobuf/gRPC files
@@ -14,7 +13,7 @@ backups/
 *.pb.cc
 *.grpc.pb.h
 *.grpc.pb.cc
-      
+
 # Bazel output files
 /bazel-*
 /MODULE.bazel
@@ -32,7 +31,7 @@ backups/
 # Ignore crash log files
 crash.log
 crash.*.log
-  
+
 # Terraform local state files (use remote backend)
 terraform.tfstate
 terraform.tfstate.backup
@@ -83,6 +82,51 @@ services/security-service/ebpf/kernel/*.o
 services/security-service/ebpf/*.ll
 services/security-service/ebpf/*.bc
 services/security-service/ebpf/runtime
+
+# =========================
+# Frontend Build Artifacts
+# =========================
+
+# General Node.js
+/web/node_modules
+/web/.pnp
+/web/.pnp.js
+/web/.yarn/*
+!/web/.yarn/patches
+!/web/.yarn/plugins
+!/web/.yarn/releases
+!/web/.yarn/versions
+
+# Testing
+/web/coverage
+
+# Next.js (React)
+/web/.next/
+/web/out/
+
+# Production
+/web/build
+
+# Misc
+/web/.DS_Store
+/web/*.pem
+
+# Debug Logs
+/web/npm-debug.log*
+/web/yarn-debug.log*
+/web/yarn-error.log*
+/web/.pnpm-debug.log*
+
+# Vercel
+/web/.vercel
+
+# TypeScript
+/web/*.tsbuildinfo
+/web/next-env.d.ts
+
+# Local Environment Files (Crucial for security)
+/web/.env*
+!/web/.env.example
 
 # --- EXCEPTIONS ---
 # required runtime artifact for the Go authz-service.
