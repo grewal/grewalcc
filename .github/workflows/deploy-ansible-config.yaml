@@ -4,12 +4,11 @@ on:
   push:
     branches:
       - master
-      - envoy-security-service-dev
     paths:
       - 'ansible/**'
       - '.github/workflows/deploy-ansible-config.yaml'
-      - 'services/security-service/go/**'
-  workflow_dispatch: # Allows manual triggering
+      - 'services/authorization/go/**'
+  workflow_dispatch:
 
 jobs:
   apply_playbook:
