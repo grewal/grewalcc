@@ -1,21 +1,21 @@
 [submodule "services/security-service/protos/envoy"]
-	path = services/security-service/protos/envoy
+	path = services/authorization/protos/envoy
 	url = https://github.com/envoyproxy/envoy.git
 [submodule "services/security-service/protos/validate"]
-	path = services/security-service/protos/validate
+	path = services/authorization/protos/validate
 	url = https://github.com/envoyproxy/protoc-gen-validate.git
 [submodule "services/security-service/protos/xds"]
-	path = services/security-service/protos/xds
+	path = services/authorization/protos/xds
 	url = https://github.com/cncf/xds.git
 [submodule "services/security-service/protos/opencensus-proto"]
-	path = services/security-service/protos/opencensus-proto
+	path = services/authorization/protos/opencensus-proto
 	url = https://github.com/census-instrumentation/opencensus-proto.git
 [submodule "services/security-service/protos/opentelemetry-proto"]
-	path = services/security-service/protos/opentelemetry-proto
+	path = services/authorization/protos/opentelemetry-proto
 	url = https://github.com/open-telemetry/opentelemetry-proto.git
 [submodule "services/security-service/protos/prometheus-metrics-model"]
-	path = services/security-service/protos/prometheus-metrics-model
+	path = services/authorization/protos/prometheus-metrics-model
 	url = https://github.com/prometheus/client_model.git
 [submodule "services/security-service/protos/cel-spec"]
-	path = services/security-service/protos/cel-spec
+	path = services/authorization/protos/cel-spec
 	url = https://github.com/google/cel-spec.git
