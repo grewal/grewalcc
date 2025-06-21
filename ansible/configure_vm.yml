@@ -22,9 +22,9 @@
     - consul
     - redis
     - postgres
-    - authz_service
+    - authorization_service
     - authentication_service
-    - grewal-backend
+    - grewalcc
     #- redis_exporter
     - envoy
 
