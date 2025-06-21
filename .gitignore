@@ -97,6 +97,15 @@ services/security-service/ebpf/runtime
 !/web/.yarn/releases
 !/web/.yarn/versions
 
+# ================================
+# Frontend: /web/grewal-cc-web
+# ================================
+/web/grewal-cc-web/.next/
+/web/grewal-cc-web/out/
+/web/grewal-cc-web/.DS_Store
+/web/grewal-cc-web/*.pem
+/web/grewal-cc-web/.env*.local
+
 # Testing
 /web/coverage
 
@@ -134,3 +143,43 @@ services/grewalcc/grewalcc
 # --- EXCEPTIONS ---
 # required runtime artifact for the Go authz-service.
 !/services/security-service/ebpf/kernel/xdp_ip_blocker.o
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
