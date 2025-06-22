@@ -1,16 +1,21 @@
+// File: services/grewalcc/home_general_service.cc
 #include "home_general_service.h"
 #include <iostream>
+#include <memory>
 #include <string>
 #include <map>
+#include <grpcpp/health_check_service_interface.h>
 
 namespace grewal {
 
 grpc::Status HomeGeneralServiceImpl::GetHomeGeneral(
     grpc::ServerContext* context,
-    const HomeGeneralRequest* request,
-    HomeGeneralResponse* response) {
+    const GeneralRequest* request,
+    GeneralResponse* response) {
 
-    // --- 1. Extract Headers from gRPC Metadata ---
+    (void)request;
+
+    // Extract Headers from gRPC Metadata
     std::string remote_ip = "Unknown";
     std::string user_agent = "Unknown";
 
@@ -26,11 +31,10 @@ grpc::Status HomeGeneralServiceImpl::GetHomeGeneral(
         user_agent = std::string(ua_iter->second.data(), ua_iter->second.length());
     }
 
-    // --- 2. Populate the Response Message ---
-    std::string data_output = "IP: " + remote_ip + " | UA: " + user_agent;
-    response->set_html_output(data_output);
+    // Populate the Response Message
+    response->set_remote_ip(remote_ip);
+    response->set_user_agent(user_agent);
 
-    // --- 3. Log for confirmation ---
     std::cout << "GetHomeGeneral: Processed request for IP="
               << remote_ip << ", UA=" << user_agent << std::endl;
 
@@ -40,6 +44,8 @@ grpc::Status HomeGeneralServiceImpl::GetHomeGeneral(
 void RunGrpcServer() {
     std::string server_address("0.0.0.0:50051");
     grewal::HomeGeneralServiceImpl service;
+
+    grpc::EnableDefaultHealthCheckService(true);
 
     grpc::ServerBuilder builder;
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());

@@ -1,7 +1,7 @@
 #include <iostream>
-#include "home_general_service.h" // Include the gRPC service implementation
+#include "home_general_service.h"
 
 int main(int argc, char *argv[]) {
-    grewal::RunGrpcServer(); // ONLY start the gRPC server
+    grewal::RunGrpcServer();
     return 0;
 }
