@@ -1,25 +1,6 @@
 {
-  "dependencies": {
-    "@grpc/grpc-js": "^1.13.1",
-    "google-protobuf": "^3.21.4",
-    "grpc-web": "^1.5.0",
-    "protoc-gen-js": "^3.21.4-4"
-  },
-  "name": "frontend",
+  "name": "grewalcc-backend",
   "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "grpc-tools": "^1.13.0",
-    "protobufjs": "^7.5.3",
-    "webpack": "^5.98.0",
-    "webpack-cli": "^6.0.1"
-  },
-  "description": ""
+  "description": "Build-time dependencies for grewalcc C++ service.",
+  "private": true
 }
