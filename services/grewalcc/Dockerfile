@@ -1,52 +1,39 @@
-# Multi-Stage Dockerfile for the C++ 'grewalcc' gRPC Service
-#
+# File: services/grewalcc/Dockerfile
 
-# --- Stage 1: The "Builder" ---
+# --- Stage 1: Builder ---
 FROM debian:12.5-slim AS builder
 
-LABEL stage=builder
-
 RUN apt-get update && \
     export DEBIAN_FRONTEND=noninteractive && \
     apt-get install -y --no-install-recommends \
-    build-essential \
-    pkg-config \
-    git \
-    libgrpc++-dev \
-    protobuf-compiler-grpc \
-    libprotobuf-dev && \
+        build-essential \
+        pkg-config \
+        libgrpc++-dev \
+        libprotobuf-dev \
+        protobuf-compiler-grpc && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the entire service directory into the builder.
-COPY . .
+# Adjusted: copy protos from root-level protos/
+COPY protos ./protos
 
-# Run the Makefile to compile the binary & generate protos
+# Adjusted: copy C++ service code from services/grewalcc
+COPY services/grewalcc .
 
-RUN make all
+RUN make
 
-# --- Stage 2: The "Runner" ---
+# --- Stage 2: Minimal runtime ---
 FROM debian:12.5-slim AS runner
-
 RUN apt-get update && \
-    export DEBIAN_FRONTEND=noninteractive && \
-    apt-get install -y --no-install-recommends \
-    libgrpc++1.51 \
-    libprotobuf32 \
-    && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends libgrpc++1.51 libprotobuf32 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --system --no-create-home appuser
-USER appuser
-WORKDIR /home/appuser
+WORKDIR /app
 
-COPY --from=builder /app/grewalcc /usr/local/bin/grewalcc
+COPY --from=builder /app/grewalcc .
 
-# Expose the gRPC port
 EXPOSE 50051
+CMD ["./grewalcc"]
 
-CMD ["grewalcc"]
