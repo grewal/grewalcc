@@ -6,7 +6,6 @@ dist/
 grewal.log
 nohup.out
 *.o
-
 backups/
 
 # Ignore generated Protobuf/gRPC files
@@ -14,7 +13,7 @@ backups/
 *.pb.cc
 *.grpc.pb.h
 *.grpc.pb.cc
-      
+
 # Bazel output files
 /bazel-*
 /MODULE.bazel
@@ -32,7 +31,7 @@ backups/
 # Ignore crash log files
 crash.log
 crash.*.log
-  
+
 # Terraform local state files (use remote backend)
 terraform.tfstate
 terraform.tfstate.backup
@@ -84,6 +83,103 @@ services/security-service/ebpf/*.ll
 services/security-service/ebpf/*.bc
 services/security-service/ebpf/runtime
 
+# =========================
+# Frontend Build Artifacts
+# =========================
+
+# General Node.js
+/web/node_modules
+/web/.pnp
+/web/.pnp.js
+/web/.yarn/*
+!/web/.yarn/patches
+!/web/.yarn/plugins
+!/web/.yarn/releases
+!/web/.yarn/versions
+
+# ================================
+# Frontend: /web/grewal-cc-web
+# ================================
+/web/grewal-cc-web/.next/
+/web/grewal-cc-web/out/
+/web/grewal-cc-web/.DS_Store
+/web/grewal-cc-web/*.pem
+/web/grewal-cc-web/.env*.local
+
+# Testing
+/web/coverage
+
+# Next.js (React)
+/web/.next/
+/web/out/
+
+# Production
+/web/build
+
+# Misc
+/web/.DS_Store
+/web/*.pem
+
+# Debug Logs
+/web/npm-debug.log*
+/web/yarn-debug.log*
+/web/yarn-error.log*
+/web/.pnpm-debug.log*
+
+# Vercel
+/web/.vercel
+
+# TypeScript
+/web/*.tsbuildinfo
+/web/next-env.d.ts
+
+# Local Environment Files (Crucial for security)
+/web/.env*
+!/web/.env.example
+
+# Binary
+services/grewalcc/grewalcc
+
 # --- EXCEPTIONS ---
 # required runtime artifact for the Go authz-service.
 !/services/security-service/ebpf/kernel/xdp_ip_blocker.o
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

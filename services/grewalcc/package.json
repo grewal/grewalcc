@@ -1,0 +1,6 @@
+{
+  "name": "grewalcc-backend",
+  "version": "1.0.0",
+  "description": "Build-time dependencies for grewalcc C++ service.",
+  "private": true
+}

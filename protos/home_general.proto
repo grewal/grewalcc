@@ -1,0 +1,23 @@
+// File: services/grewalcc/home_general.proto (Final, Lean Version)
+
+// Standard syntax declaration
+syntax = "proto3";
+
+package grewal;
+
+message GeneralRequest {
+  // Message is intentionally left empty
+}
+
+message GeneralResponse {
+  string remote_ip = 1;
+  string user_agent = 2;
+}
+
+service HomeGeneral {
+  // Defines a single Remote Procedure Call (RPC) named GetHomeGeneral.
+  // For a call this function, a client MUST send a
+  // `GeneralRequest` message and can EXPECT to receive a
+  // `GeneralResponse` message in return. This is the API contract.
+  rpc GetHomeGeneral (GeneralRequest) returns (GeneralResponse);
+}

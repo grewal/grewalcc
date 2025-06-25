@@ -2,7 +2,7 @@
 ---
 # Defaults for the Rust `auth-service`
 auth_service_image_repository: "grewal/auth-service"
-auth_service_image_tag: "0.1.5"
+auth_service_image_tag: "0.1.6"
 
 auth_service_container_name: "auth-service"
 auth_service_host_port: 3000

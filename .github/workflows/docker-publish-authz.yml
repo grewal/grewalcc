@@ -1,11 +1,11 @@
-name: Build and Push Authz Service Docker Image
+name: Build and Push Authorization Service Docker Image
 
 on:
   push:
     branches:
-      - envoy-security-service-dev
+      - master
     paths:
-      - 'services/security-service/go/**'
+      - 'services/authorization/**'
       - '.github/workflows/docker-publish-authz.yml'
 
 jobs:
@@ -29,10 +29,10 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./services/security-service/go
-          file: ./services/security-service/go/Dockerfile
+          context: ./services/authorization
+          file: ./services/authorization/go/Dockerfile
           push: true
-          tags: | 
+          tags: |
             grewal/authz-service:latest
             grewal/authz-service:${{ github.sha }}
           cache-from: type=gha
