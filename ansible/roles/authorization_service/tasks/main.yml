@@ -1,5 +1,5 @@
-# FILE: services/security-service/ansible/roles/authz_service/tasks/main.yml
-# VERSION: Final (Privileged Deployment)
+# ansible/roles/authorization_service/tasks/main.yml
+# VERSION: CORRECTED for 'networks' parameter
 ---
 - name: Ensure BPF filesystem is mounted persistently
   ansible.posix.mount:
@@ -36,20 +36,25 @@
   become: yes
   notify: Reload Consul Configuration
 
-- name: Ensure authz-service container is running with privileged mode
+- name: Ensure authz-service container is running on the bridge network
   community.docker.docker_container:
     name: authz-service
     image: "grewal/authz-service:{{ authz_service_image_tag }}"
     state: started
     pull: true
     recreate: true
-    network_mode: host
     restart_policy: always
+    privileged: true
+    networks: # Correct parameter (plural)
+      - name: "{{ docker_network_name }}"
+    ports: # Publish ports for health checks
+      - "127.0.0.1:{{ authz_service_http_port }}:{{ authz_service_http_port }}"
+      - "127.0.0.1:{{ authz_service_grpc_port }}:{{ authz_service_grpc_port }}"
     env:
       CONSUL_HTTP_ADDR: "127.0.0.1:{{ consul_http_port | default(8500) }}"
       HTTP_LISTEN_ADDR: ":{{ authz_service_http_port | default(9001) }}"
       GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port | default(9002) }}"
-      REDIS_ADDR: "127.0.0.1:{{ redis_port | default(6379) }}"
+      REDIS_ADDR: "redis-server:{{ redis_port | default(6379) }}"
       REDIS_PASSWORD: "{{ redis_password }}"
       LOG_LEVEL: "{{ authz_service_log_level | default('INFO') }}"
       XDP_GLOBAL_ENABLED: "true"
@@ -60,12 +65,7 @@
     labels:
       service: authz-service
       managed_by: ansible
-    
-    # Using privileged mode as the definitive fix for all kernel/permission issues.
-    privileged: true
-
     volumes:
       - /sys/fs/bpf:/sys/fs/bpf:rshared
-
   become: yes
-  tags: [authz_service, docker_container]
+  tags: [authorization_service, docker_container]
