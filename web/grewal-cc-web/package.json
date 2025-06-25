@@ -3,28 +3,29 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "build:protos": "grpc_tools_node_protoc --proto_path=../../protos --plugin=protoc-gen-ts=./node_modules/.bin/protoc-gen-ts --ts_out=grpc_js:./src/lib/grpc --js_out=import_style=commonjs,binary:./src/lib/grpc --grpc_out=grpc_js:./src/lib/grpc ../../protos/home_general.proto"
+    "build:protos": "mkdir -p ./src/lib/grpc && grpc_tools_node_protoc --proto_path=../../protos --plugin=protoc-gen-ts=./node_modules/.bin/protoc-gen-ts --ts_out=grpc_js:./src/lib/grpc --js_out=import_style=commonjs,binary:./src/lib/grpc --grpc_out=grpc_js:./src/lib/grpc ../../protos/home_general.proto"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.10.8",
-    "next": "^14.2.4",
+    "autoprefixer": "^10.4.19",
+    "next": "14.2.4",
+    "postcss": "^8.4.38",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.4"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.4",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.4",
     "google-protobuf": "^3.21.2",
     "grpc-tools": "^1.12.4",
-    "postcss": "^8.4.38",
-    "tailwindcss": "^3.4.4",
     "ts-protoc-gen": "^0.15.0",
     "typescript": "^5.5.2"
   }
