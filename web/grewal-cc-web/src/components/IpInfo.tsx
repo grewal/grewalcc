@@ -1,57 +1,66 @@
-import { getHomeData, HomeData } from '@/services/grewalccClient';
 import { headers } from 'next/headers';
-import * as grpc from '@grpc/grpc-js';
+import { getHomeGeneral } from '@/services/grewalccClient';
 
-// This is an async React Server Component (RSC).
-// The 'async' keyword is the magic that enables data fetching directly within the component.
 export default async function IpInfo() {
-  // 1. Prepare Metadata for the gRPC call
-  // Next.js provides a `headers()` function to access the incoming request headers on the server.
   const headersList = headers();
-  const userAgent = headersList.get('user-agent') || 'Unknown';
   
-  // The x-forwarded-for header can be a comma-separated list of IPs.
-  // We are interested in the original client IP, which is typically the first one.
-  const xForwardedFor = headersList.get('x-forwarded-for');
-  const clientIp = xForwardedFor ? xForwardedFor.split(',')[0].trim() : 'Unknown';
-
-  // We create gRPC Metadata to pass these headers to the backend.
-  // The C++ gRPC server will be able to read these key-value pairs.
-  const metadata = new grpc.Metadata();
-  metadata.set('x-forwarded-for', clientIp);
-  metadata.set('user-agent', userAgent);
+  // Extract client information from headers, providing sensible fallbacks.
+  const clientIp = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const clientUserAgent = headersList.get('user-agent') || 'unknown';
   
-  // 2. Fetch the data
-  // We simply 'await' our service function. React's renderer will automatically
-  // handle the suspension and resumption of this component.
-  // We add a try/catch block for resilience. If the backend call fails,
-  // we can render an error state instead of crashing the page.
-  let data: HomeData;
   try {
-    data = await getHomeData(metadata);
-  } catch (error) {
-    console.error("Failed to fetch home data:", error);
-    // Render a user-friendly error state if the fetch fails
+    // Fetch data from our gRPC service, passing the extracted info.
+    const response = await getHomeGeneral({
+      clientIp,
+      clientUserAgent,
+    });
+    
+    // Render the success UI
     return (
-      <div className="mt-4 p-4 border border-red-400 bg-red-100 text-red-700 rounded">
-        <p className="font-bold">Error:</p>
-        <p>Could not load dynamic data from the backend.</p>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+          <span className="text-gray-700 dark:text-gray-300 font-medium">Your IP:</span>
+          <span className="text-blue-700 dark:text-blue-300 font-mono text-sm bg-blue-100 dark:bg-blue-900/40 px-2 py-1 rounded">
+            {response.remoteIp}
+          </span>
+        </div>
+        
+        <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-800">
+          <span className="text-gray-700 dark:text-gray-300 font-medium">Your Browser:</span>
+          <span className="text-green-700 dark:text-green-300 font-mono text-xs bg-green-100 dark:bg-green-900/40 px-2 py-1 rounded max-w-xs truncate">
+            {response.userAgent}
+          </span>
+        </div>
+        
+        <div className="flex items-center justify-center pt-2">
+          <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
+            <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+            Connected via gRPC
+          </div>
+        </div>
+      </div>
+    );
+  } catch (error) {
+    // This block executes if the getHomeGeneral promise is rejected.
+    console.error('Failed to render user information:', error);
+    
+    // Render a user-friendly error state
+    return (
+      <div className="space-y-4">
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+          <div className="flex items-center">
+            <div className="w-4 h-4 bg-red-500 rounded-full mr-3 flex-shrink-0"></div>
+            <div>
+              <h3 className="text-red-800 dark:text-red-300 font-medium">
+                Unable to Fetch Information
+              </h3>
+              <p className="text-red-600 dark:text-red-400 text-sm mt-1">
+                The backend service is temporarily unavailable.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
-
-  // 3. Render the successful UI
-  return (
-    <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-      <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-200">Your Connection Details:</h2>
-      <div className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
-        <p>
-          <span className="font-medium text-gray-900 dark:text-white">IP Address:</span> {data.remoteIp}
-        </p>
-        <p>
-          <span className="font-medium text-gray-900 dark:text-white">User Agent:</span> {data.userAgent}
-        </p>
-      </div>
-    </div>
-  );
 }

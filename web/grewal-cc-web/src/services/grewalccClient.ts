@@ -1,74 +1,33 @@
+import * as grpc from '@grpc/grpc-js';
 import { GeneralRequest, GeneralResponse } from '@/lib/grpc/home_general_pb';
 import { HomeGeneralClient } from '@/lib/grpc/home_general_grpc_pb';
-import * as grpc from '@grpc/grpc-js';
 
-// --- Configuration ---
-// In a real production app, this would come from environment variables.
-// Docker's internal DNS will resolve 'grewalcc' to the correct container IP.
-const BACKEND_ADDRESS = 'grewalcc:50051';
+const GRPC_SERVICE_URL = process.env.GRPC_SERVICE_URL || 'grewalcc:50051';
+export interface HomeData { remoteIp: string; userAgent: string; }
+interface UserInfo { clientIp: string; clientUserAgent: string; }
+type HomeGeneralClientInstance = InstanceType<typeof HomeGeneralClient>;
+let grpcClient: HomeGeneralClientInstance | null = null;
 
-// --- Define the data structure for our application ---
-export interface HomeData {
-  remoteIp: string;
-  userAgent: string;
-}
-
-// --- Create a reusable, lazy-loaded gRPC client instance ---
-// This prevents creating a new connection for every request, which is inefficient.
-let client: HomeGeneralClient | null = null;
-
-function getClient(): HomeGeneralClient {
-  if (!client) {
-    console.log(`[gRPC Client] Creating new client connection to ${BACKEND_ADDRESS}`);
-    client = new HomeGeneralClient(
-      BACKEND_ADDRESS,
-      grpc.credentials.createInsecure() // Use insecure credentials for internal, service-to-service communication
-    );
+function getClient(): HomeGeneralClientInstance {
+  if (!grpcClient) {
+    grpcClient = new HomeGeneralClient(GRPC_SERVICE_URL, grpc.credentials.createInsecure());
   }
-  return client;
+  return grpcClient;
 }
 
-// --- The main data-fetching function ---
-// This is the function our server components will call.
-// It wraps the old-style callback-based gRPC call in a modern async/await Promise.
-export async function getHomeData(
-  // We will pass the original request headers from the server component
-  // to propagate the user's IP and User-Agent.
-  metadata: grpc.Metadata = new grpc.Metadata()
-): Promise<HomeData> {
+export async function getHomeGeneral(userInfo: UserInfo): Promise<HomeData> {
   return new Promise((resolve, reject) => {
-    const grpcClient = getClient();
+    const client = getClient();
     const request = new GeneralRequest();
-
-    // Set a deadline for the RPC call. Crucial for preventing hangs.
+    const metadata = new grpc.Metadata();
+    metadata.add('x-forwarded-for', userInfo.clientIp);
+    metadata.add('x-client-user-agent', userInfo.clientUserAgent);
     const deadline = new Date();
-    deadline.setSeconds(deadline.getSeconds() + 5); // 5-second timeout
-
-    console.log('[gRPC Client] Making getHomeGeneral RPC call...');
-
-    grpcClient.getHomeGeneral(
-      request,
-      metadata, // Pass headers/metadata to the backend
-      { deadline },
-      (error: grpc.ServiceError | null, response: GeneralResponse) => {
-        if (error) {
-          console.error(`[gRPC Client] RPC Error: code=${error.code}, details="${error.details}"`);
-          // In a real app, you might want to destroy the client on certain errors
-          // to force a reconnection on the next call.
-          // if (error.code === grpc.status.UNAVAILABLE) { client = null; }
-          return reject(new Error(`[gRPC Error] ${error.details}`));
-        }
-        if (response) {
-          console.log('[gRPC Client] RPC Success. Received response.');
-          const data: HomeData = {
-            remoteIp: response.getRemoteIp(),
-            userAgent: response.getUserAgent(),
-          };
-          resolve(data);
-        } else {
-          reject(new Error('Received null response from backend without an error'));
-        }
-      }
-    );
+    deadline.setSeconds(deadline.getSeconds() + 5);
+    client.getHomeGeneral(request, metadata, { deadline }, (error: grpc.ServiceError | null, response: GeneralResponse) => {
+      if (error) return reject(new Error(`gRPC service unavailable: ${error.message}`));
+      if (!response) return reject(new Error('Empty response from gRPC service'));
+      resolve({ remoteIp: response.getRemoteIp(), userAgent: response.getUserAgent() });
+    });
   });
 }
