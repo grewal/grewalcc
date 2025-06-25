@@ -35,23 +35,23 @@ HomeGeneral::Stub::Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channe
   : channel_(channel), rpcmethod_GetHomeGeneral_(HomeGeneral_method_names[0], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   {}
 
-::grpc::Status HomeGeneral::Stub::GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grewal::HomeGeneralResponse* response) {
-  return ::grpc::internal::BlockingUnaryCall< ::grewal::HomeGeneralRequest, ::grewal::HomeGeneralResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_GetHomeGeneral_, context, request, response);
+::grpc::Status HomeGeneral::Stub::GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grewal::GeneralResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall< ::grewal::GeneralRequest, ::grewal::GeneralResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_GetHomeGeneral_, context, request, response);
 }
 
-void HomeGeneral::Stub::async::GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest* request, ::grewal::HomeGeneralResponse* response, std::function<void(::grpc::Status)> f) {
-  ::grpc::internal::CallbackUnaryCall< ::grewal::HomeGeneralRequest, ::grewal::HomeGeneralResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_GetHomeGeneral_, context, request, response, std::move(f));
+void HomeGeneral::Stub::async::GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest* request, ::grewal::GeneralResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc::internal::CallbackUnaryCall< ::grewal::GeneralRequest, ::grewal::GeneralResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_GetHomeGeneral_, context, request, response, std::move(f));
 }
 
-void HomeGeneral::Stub::async::GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest* request, ::grewal::HomeGeneralResponse* response, ::grpc::ClientUnaryReactor* reactor) {
+void HomeGeneral::Stub::async::GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest* request, ::grewal::GeneralResponse* response, ::grpc::ClientUnaryReactor* reactor) {
   ::grpc::internal::ClientCallbackUnaryFactory::Create< ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_GetHomeGeneral_, context, request, response, reactor);
 }
 
-::grpc::ClientAsyncResponseReader< ::grewal::HomeGeneralResponse>* HomeGeneral::Stub::PrepareAsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::grewal::HomeGeneralResponse, ::grewal::HomeGeneralRequest, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_GetHomeGeneral_, context, request);
+::grpc::ClientAsyncResponseReader< ::grewal::GeneralResponse>* HomeGeneral::Stub::PrepareAsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::grewal::GeneralResponse, ::grewal::GeneralRequest, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_GetHomeGeneral_, context, request);
 }
 
-::grpc::ClientAsyncResponseReader< ::grewal::HomeGeneralResponse>* HomeGeneral::Stub::AsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) {
+::grpc::ClientAsyncResponseReader< ::grewal::GeneralResponse>* HomeGeneral::Stub::AsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) {
   auto* result =
     this->PrepareAsyncGetHomeGeneralRaw(context, request, cq);
   result->StartCall();
@@ -62,11 +62,11 @@ HomeGeneral::Service::Service() {
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       HomeGeneral_method_names[0],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
-      new ::grpc::internal::RpcMethodHandler< HomeGeneral::Service, ::grewal::HomeGeneralRequest, ::grewal::HomeGeneralResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
+      new ::grpc::internal::RpcMethodHandler< HomeGeneral::Service, ::grewal::GeneralRequest, ::grewal::GeneralResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](HomeGeneral::Service* service,
              ::grpc::ServerContext* ctx,
-             const ::grewal::HomeGeneralRequest* req,
-             ::grewal::HomeGeneralResponse* resp) {
+             const ::grewal::GeneralRequest* req,
+             ::grewal::GeneralResponse* resp) {
                return service->GetHomeGeneral(ctx, req, resp);
              }, this)));
 }
@@ -74,7 +74,7 @@ HomeGeneral::Service::Service() {
 HomeGeneral::Service::~Service() {
 }
 
-::grpc::Status HomeGeneral::Service::GetHomeGeneral(::grpc::ServerContext* context, const ::grewal::HomeGeneralRequest* request, ::grewal::HomeGeneralResponse* response) {
+::grpc::Status HomeGeneral::Service::GetHomeGeneral(::grpc::ServerContext* context, const ::grewal::GeneralRequest* request, ::grewal::GeneralResponse* response) {
   (void) context;
   (void) request;
   (void) response;

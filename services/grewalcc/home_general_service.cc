@@ -26,7 +26,7 @@ grpc::Status HomeGeneralServiceImpl::GetHomeGeneral(
         remote_ip = std::string(xff_iter->second.data(), xff_iter->second.length());
     }
 
-    auto ua_iter = metadata.find("user-agent");
+    auto ua_iter = metadata.find("x-client-user-agent");
     if (ua_iter != metadata.end()) {
         user_agent = std::string(ua_iter->second.data(), ua_iter->second.length());
     }
