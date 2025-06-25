@@ -1,0 +1,7 @@
+---
+# ansible/roles/web/defaults/main.yml
+
+web_image_repository: "grewal/grewal-cc-web"
+web_image_tag: "0.1.1"
+web_container_name: "grewal-cc-web"
+web_container_port: 3000

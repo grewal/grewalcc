@@ -2,7 +2,9 @@
 // If you make any local change, they will be lost.
 // source: home_general.proto
 // Original file comments:
-// home_general.proto
+// File: services/grewalcc/home_general.proto (Final, Lean Version)
+//
+// Standard syntax declaration
 #ifndef GRPC_home_5fgeneral_2eproto__INCLUDED
 #define GRPC_home_5fgeneral_2eproto__INCLUDED
 
@@ -37,41 +39,49 @@ class HomeGeneral final {
   class StubInterface {
    public:
     virtual ~StubInterface() {}
-    virtual ::grpc::Status GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grewal::HomeGeneralResponse* response) = 0;
-    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::grewal::HomeGeneralResponse>> AsyncGetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) {
-      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::grewal::HomeGeneralResponse>>(AsyncGetHomeGeneralRaw(context, request, cq));
+    // Defines a single Remote Procedure Call (RPC) named GetHomeGeneral.
+    // For a call this function, a client MUST send a
+    // `GeneralRequest` message and can EXPECT to receive a
+    // `GeneralResponse` message in return. This is the API contract.
+    virtual ::grpc::Status GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grewal::GeneralResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::grewal::GeneralResponse>> AsyncGetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::grewal::GeneralResponse>>(AsyncGetHomeGeneralRaw(context, request, cq));
     }
-    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::grewal::HomeGeneralResponse>> PrepareAsyncGetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) {
-      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::grewal::HomeGeneralResponse>>(PrepareAsyncGetHomeGeneralRaw(context, request, cq));
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::grewal::GeneralResponse>> PrepareAsyncGetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::grewal::GeneralResponse>>(PrepareAsyncGetHomeGeneralRaw(context, request, cq));
     }
     class async_interface {
      public:
       virtual ~async_interface() {}
-      virtual void GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest* request, ::grewal::HomeGeneralResponse* response, std::function<void(::grpc::Status)>) = 0;
-      virtual void GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest* request, ::grewal::HomeGeneralResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      // Defines a single Remote Procedure Call (RPC) named GetHomeGeneral.
+      // For a call this function, a client MUST send a
+      // `GeneralRequest` message and can EXPECT to receive a
+      // `GeneralResponse` message in return. This is the API contract.
+      virtual void GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest* request, ::grewal::GeneralResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest* request, ::grewal::GeneralResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
     };
     typedef class async_interface experimental_async_interface;
     virtual class async_interface* async() { return nullptr; }
     class async_interface* experimental_async() { return async(); }
    private:
-    virtual ::grpc::ClientAsyncResponseReaderInterface< ::grewal::HomeGeneralResponse>* AsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) = 0;
-    virtual ::grpc::ClientAsyncResponseReaderInterface< ::grewal::HomeGeneralResponse>* PrepareAsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::grewal::GeneralResponse>* AsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::grewal::GeneralResponse>* PrepareAsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) = 0;
   };
   class Stub final : public StubInterface {
    public:
     Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options = ::grpc::StubOptions());
-    ::grpc::Status GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grewal::HomeGeneralResponse* response) override;
-    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::grewal::HomeGeneralResponse>> AsyncGetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) {
-      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::grewal::HomeGeneralResponse>>(AsyncGetHomeGeneralRaw(context, request, cq));
+    ::grpc::Status GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grewal::GeneralResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::grewal::GeneralResponse>> AsyncGetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::grewal::GeneralResponse>>(AsyncGetHomeGeneralRaw(context, request, cq));
     }
-    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::grewal::HomeGeneralResponse>> PrepareAsyncGetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) {
-      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::grewal::HomeGeneralResponse>>(PrepareAsyncGetHomeGeneralRaw(context, request, cq));
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::grewal::GeneralResponse>> PrepareAsyncGetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::grewal::GeneralResponse>>(PrepareAsyncGetHomeGeneralRaw(context, request, cq));
     }
     class async final :
       public StubInterface::async_interface {
      public:
-      void GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest* request, ::grewal::HomeGeneralResponse* response, std::function<void(::grpc::Status)>) override;
-      void GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest* request, ::grewal::HomeGeneralResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      void GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest* request, ::grewal::GeneralResponse* response, std::function<void(::grpc::Status)>) override;
+      void GetHomeGeneral(::grpc::ClientContext* context, const ::grewal::GeneralRequest* request, ::grewal::GeneralResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
      private:
       friend class Stub;
       explicit async(Stub* stub): stub_(stub) { }
@@ -83,8 +93,8 @@ class HomeGeneral final {
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;
     class async async_stub_{this};
-    ::grpc::ClientAsyncResponseReader< ::grewal::HomeGeneralResponse>* AsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) override;
-    ::grpc::ClientAsyncResponseReader< ::grewal::HomeGeneralResponse>* PrepareAsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::HomeGeneralRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::grewal::GeneralResponse>* AsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::grewal::GeneralResponse>* PrepareAsyncGetHomeGeneralRaw(::grpc::ClientContext* context, const ::grewal::GeneralRequest& request, ::grpc::CompletionQueue* cq) override;
     const ::grpc::internal::RpcMethod rpcmethod_GetHomeGeneral_;
   };
   static std::unique_ptr<Stub> NewStub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options = ::grpc::StubOptions());
@@ -93,7 +103,11 @@ class HomeGeneral final {
    public:
     Service();
     virtual ~Service();
-    virtual ::grpc::Status GetHomeGeneral(::grpc::ServerContext* context, const ::grewal::HomeGeneralRequest* request, ::grewal::HomeGeneralResponse* response);
+    // Defines a single Remote Procedure Call (RPC) named GetHomeGeneral.
+    // For a call this function, a client MUST send a
+    // `GeneralRequest` message and can EXPECT to receive a
+    // `GeneralResponse` message in return. This is the API contract.
+    virtual ::grpc::Status GetHomeGeneral(::grpc::ServerContext* context, const ::grewal::GeneralRequest* request, ::grewal::GeneralResponse* response);
   };
   template <class BaseClass>
   class WithAsyncMethod_GetHomeGeneral : public BaseClass {
@@ -107,11 +121,11 @@ class HomeGeneral final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::HomeGeneralRequest* /*request*/, ::grewal::HomeGeneralResponse* /*response*/) override {
+    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::GeneralRequest* /*request*/, ::grewal::GeneralResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
-    void RequestGetHomeGeneral(::grpc::ServerContext* context, ::grewal::HomeGeneralRequest* request, ::grpc::ServerAsyncResponseWriter< ::grewal::HomeGeneralResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+    void RequestGetHomeGeneral(::grpc::ServerContext* context, ::grewal::GeneralRequest* request, ::grpc::ServerAsyncResponseWriter< ::grewal::GeneralResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
       ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
@@ -123,25 +137,25 @@ class HomeGeneral final {
    public:
     WithCallbackMethod_GetHomeGeneral() {
       ::grpc::Service::MarkMethodCallback(0,
-          new ::grpc::internal::CallbackUnaryHandler< ::grewal::HomeGeneralRequest, ::grewal::HomeGeneralResponse>(
+          new ::grpc::internal::CallbackUnaryHandler< ::grewal::GeneralRequest, ::grewal::GeneralResponse>(
             [this](
-                   ::grpc::CallbackServerContext* context, const ::grewal::HomeGeneralRequest* request, ::grewal::HomeGeneralResponse* response) { return this->GetHomeGeneral(context, request, response); }));}
+                   ::grpc::CallbackServerContext* context, const ::grewal::GeneralRequest* request, ::grewal::GeneralResponse* response) { return this->GetHomeGeneral(context, request, response); }));}
     void SetMessageAllocatorFor_GetHomeGeneral(
-        ::grpc::MessageAllocator< ::grewal::HomeGeneralRequest, ::grewal::HomeGeneralResponse>* allocator) {
+        ::grpc::MessageAllocator< ::grewal::GeneralRequest, ::grewal::GeneralResponse>* allocator) {
       ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(0);
-      static_cast<::grpc::internal::CallbackUnaryHandler< ::grewal::HomeGeneralRequest, ::grewal::HomeGeneralResponse>*>(handler)
+      static_cast<::grpc::internal::CallbackUnaryHandler< ::grewal::GeneralRequest, ::grewal::GeneralResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
     ~WithCallbackMethod_GetHomeGeneral() override {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::HomeGeneralRequest* /*request*/, ::grewal::HomeGeneralResponse* /*response*/) override {
+    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::GeneralRequest* /*request*/, ::grewal::GeneralResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     virtual ::grpc::ServerUnaryReactor* GetHomeGeneral(
-      ::grpc::CallbackServerContext* /*context*/, const ::grewal::HomeGeneralRequest* /*request*/, ::grewal::HomeGeneralResponse* /*response*/)  { return nullptr; }
+      ::grpc::CallbackServerContext* /*context*/, const ::grewal::GeneralRequest* /*request*/, ::grewal::GeneralResponse* /*response*/)  { return nullptr; }
   };
   typedef WithCallbackMethod_GetHomeGeneral<Service > CallbackService;
   typedef CallbackService ExperimentalCallbackService;
@@ -157,7 +171,7 @@ class HomeGeneral final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::HomeGeneralRequest* /*request*/, ::grewal::HomeGeneralResponse* /*response*/) override {
+    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::GeneralRequest* /*request*/, ::grewal::GeneralResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -174,7 +188,7 @@ class HomeGeneral final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::HomeGeneralRequest* /*request*/, ::grewal::HomeGeneralResponse* /*response*/) override {
+    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::GeneralRequest* /*request*/, ::grewal::GeneralResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -197,7 +211,7 @@ class HomeGeneral final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::HomeGeneralRequest* /*request*/, ::grewal::HomeGeneralResponse* /*response*/) override {
+    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::GeneralRequest* /*request*/, ::grewal::GeneralResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -212,10 +226,10 @@ class HomeGeneral final {
     WithStreamedUnaryMethod_GetHomeGeneral() {
       ::grpc::Service::MarkMethodStreamed(0,
         new ::grpc::internal::StreamedUnaryHandler<
-          ::grewal::HomeGeneralRequest, ::grewal::HomeGeneralResponse>(
+          ::grewal::GeneralRequest, ::grewal::GeneralResponse>(
             [this](::grpc::ServerContext* context,
                    ::grpc::ServerUnaryStreamer<
-                     ::grewal::HomeGeneralRequest, ::grewal::HomeGeneralResponse>* streamer) {
+                     ::grewal::GeneralRequest, ::grewal::GeneralResponse>* streamer) {
                        return this->StreamedGetHomeGeneral(context,
                          streamer);
                   }));
@@ -224,18 +238,17 @@ class HomeGeneral final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable regular version of this method
-    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::HomeGeneralRequest* /*request*/, ::grewal::HomeGeneralResponse* /*response*/) override {
+    ::grpc::Status GetHomeGeneral(::grpc::ServerContext* /*context*/, const ::grewal::GeneralRequest* /*request*/, ::grewal::GeneralResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     // replace default version of method with streamed unary
-    virtual ::grpc::Status StreamedGetHomeGeneral(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::grewal::HomeGeneralRequest,::grewal::HomeGeneralResponse>* server_unary_streamer) = 0;
+    virtual ::grpc::Status StreamedGetHomeGeneral(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::grewal::GeneralRequest,::grewal::GeneralResponse>* server_unary_streamer) = 0;
   };
   typedef WithStreamedUnaryMethod_GetHomeGeneral<Service > StreamedUnaryService;
   typedef Service SplitStreamedService;
   typedef WithStreamedUnaryMethod_GetHomeGeneral<Service > StreamedService;
 };
-//  Make sure the service is defined!
 
 }  // namespace grewal
 

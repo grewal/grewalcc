@@ -1,0 +1,6 @@
+# ansible/roles/grewalcc/defaults/main.yml
+---
+grewalcc_image_repository: "grewal/grewalcc"
+grewalcc_image_tag: "1.2.1"
+grewalcc_container_name: "grewalcc"
+grewalcc_container_port: 50051
