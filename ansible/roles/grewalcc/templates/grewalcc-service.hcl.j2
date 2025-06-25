@@ -1,0 +1,14 @@
+service {
+  name = "grewalcc"
+  id   = "grewalcc-instance-1"
+  port = {{ grewalcc_container_port }}
+  tags = ["grpc", "cpp", "backend"]
+
+  check {
+    id       = "grewalcc-grpc-check"
+    name     = "grewalcc gRPC Health Check"
+    grpc     = "127.0.0.1:{{ grewalcc_container_port }}"
+    interval = "120s"
+    timeout  = "10s"
+  }
+}

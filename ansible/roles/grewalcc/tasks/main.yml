@@ -1,27 +1,29 @@
 ---
-- name: Ensure grewal-backend systemd unit file is deployed
+# tasks file for the 'grewalcc' C++ gRPC service
+
+- name: Ensure grewalcc container is running
+  community.docker.docker_container:
+    name: "{{ grewalcc_container_name }}"
+    image: "{{ grewalcc_image_repository }}:{{ grewalcc_image_tag }}"
+    state: started
+    pull: true
+    recreate: true
+    restart_policy: always
+    networks:
+      - name: "{{ docker_network_name }}"
+    ports:
+      - "{{ grewalcc_container_port }}:{{ grewalcc_container_port }}"
+    labels:
+      service: "grewalcc"
+      project: "grewal.cc"
+  become: yes # Interact with the Docker daemon socket
+
+- name: Deploy Consul service definition for grewalcc
   ansible.builtin.template:
-    src: grewal-backend.service.j2
-    dest: /etc/systemd/system/grewal-backend.service
+    src: grewalcc-service.hcl.j2
+    dest: "/etc/consul.d/grewalcc-service.hcl"
     owner: root
     group: root
     mode: '0644'
-  notify: Reload systemd and restart grewal-backend
-
-# roles/grewal-backend/tasks/main.yml (Add this task)
-# ... other tasks to setup/start grewal-backend ...
-
-- name: Place Consul service definition for grewal-backend
-  ansible.builtin.template:
-    src: grewal-backend-service.hcl.j2
-    dest: "/etc/consul.d/grewal-backend-service.hcl"
-    owner: root 
-    group: root
-    mode: '0644'
+  become: yes
   notify: Reload Consul Configuration
-
-- name: Ensure grewal-backend service is started and enabled
-  ansible.builtin.systemd:
-    name: grewal-backend.service
-    state: started
-    enabled: yes

@@ -1,22 +1,21 @@
+// File: services/grewalcc/home_general_service.h (Corrected)
 #ifndef HOME_GENERAL_SERVICE_H
 #define HOME_GENERAL_SERVICE_H
 
-#include "home_general.grpc.pb.h" // Includes the gRPC service definition
-#include <grpcpp/grpcpp.h>      // Includes gRPC++ headers
+#include "home_general.grpc.pb.h"
+#include <grpcpp/grpcpp.h>
 
 namespace grewal {
-
-std::string getSubdomain(const std::string& host);
 
 class HomeGeneralServiceImpl final : public HomeGeneral::Service {
 public:
     grpc::Status GetHomeGeneral(grpc::ServerContext* context,
-                               const HomeGeneralRequest* request,
-                               HomeGeneralResponse* response) override;
+                               const GeneralRequest* request,
+                               GeneralResponse* response) override;
 };
 
-void RunGrpcServer(); // Declaration of the server startup function
+void RunGrpcServer();
 
 } // namespace grewal
 
-#endif
+#endif // HOME_GENERAL_SERVICE_H
