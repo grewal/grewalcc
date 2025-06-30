@@ -1,0 +1,19 @@
+# ansible/roles/grewal_cc_web/templates/grewal-cc-web.hcl.j2
+# {{ ansible_managed }}
+
+service {
+  name = "grewal-cc-web"
+  id   = "grewal-cc-web-instance-1"
+  port = {{ grewal_cc_web_image_tag }}
+  tags = ["nextjs", "frontend", "ssr", "nodejs"]
+
+  address = "{{ grewal_cc_web_container_info.container.NetworkSettings.Networks[docker_network_name].IPAddress }}"
+
+  check {
+    id       = "web-tcp-check"
+    name     = "Next.js TCP Port Check"
+    tcp      = "{{ grewal_cc_web_container_info.container.NetworkSettings.Networks[docker_network_name].IPAddress }}:{{ grewal_cc_web_image_tag }}"
+    interval = "15s"
+    timeout  = "3s"
+  }
+}

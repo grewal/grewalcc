@@ -1,0 +1,32 @@
+# ansible/roles/grewal_cc_web/tasks/main.yml
+---
+- name: Ensure grewal-cc-web container is running
+  community.docker.docker_container:
+    name: "{{ grewal_cc_web_container_name }}"
+    image: "{{ grewal_cc_web_image_repository }}:{{ grewal_cc_web_image_tag }}"
+    state: started
+    pull: true
+    recreate: true
+    restart_policy: always
+    networks:
+      - name: "{{ docker_network_name }}"
+    labels:
+      service: "grewal-cc-web"
+      project: "grewal.cc"
+    env:
+      AUTH_SERVICE_URL: "https://grewal.cc"
+      BACKEND_GRPC_URL: "https://grewal.cc"
+  tags:
+    - grewal_cc_web
+
+- name: Deploy grewal-cc-web Consul service definition
+  ansible.builtin.template:
+    src: grewal-cc-web.hcl.j2
+    dest: "/etc/consul.d/grewal-cc-web-service.hcl"
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: Reload Consul Configuration
+  tags:
+    - grewal_cc_web
