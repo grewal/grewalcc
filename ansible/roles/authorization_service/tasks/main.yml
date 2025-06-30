@@ -1,5 +1,4 @@
 # ansible/roles/authorization_service/tasks/main.yml
-# VERSION: CORRECTED for 'networks' parameter
 ---
 - name: Ensure BPF filesystem is mounted persistently
   ansible.posix.mount:
@@ -45,16 +44,12 @@
     recreate: true
     restart_policy: always
     privileged: true
-    networks: # Correct parameter (plural)
-      - name: "{{ docker_network_name }}"
-    ports: # Publish ports for health checks
-      - "127.0.0.1:{{ authz_service_http_port }}:{{ authz_service_http_port }}"
-      - "127.0.0.1:{{ authz_service_grpc_port }}:{{ authz_service_grpc_port }}"
+    network_mode: host
     env:
       CONSUL_HTTP_ADDR: "127.0.0.1:{{ consul_http_port | default(8500) }}"
       HTTP_LISTEN_ADDR: ":{{ authz_service_http_port | default(9001) }}"
       GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port | default(9002) }}"
-      REDIS_ADDR: "redis-server:{{ redis_port | default(6379) }}"
+      REDIS_ADDR: "127.0.0.1:{{ redis_port | default(6379) }}"
       REDIS_PASSWORD: "{{ redis_password }}"
       LOG_LEVEL: "{{ authz_service_log_level | default('INFO') }}"
       XDP_GLOBAL_ENABLED: "true"
