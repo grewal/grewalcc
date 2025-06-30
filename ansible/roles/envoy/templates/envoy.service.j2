@@ -1,7 +1,6 @@
 # {{ ansible_managed }}
 [Unit]
-Description=Envoy Proxy Container
-# Gemi: Description updated to reflect it's no longer on host network.
+Description=Envoy Proxy Container (grewalnet Bridge Network)
 Requires=docker.service network-online.target consul.service dnsmasq.service
 After=docker.service network-online.target consul.service dnsmasq.service
 
@@ -14,9 +13,6 @@ ExecStartPre=-/usr/bin/docker stop envoy-svc
 ExecStartPre=-/usr/bin/docker rm envoy-svc
 ExecStartPre=-/usr/bin/docker pull {{ envoy_image_repository }}:{{ envoy_image_tag }}
 
-# Gemi: The ExecStart line has been corrected to use the 'grewalnet' bridge network.
-# The unnecessary -u root and --entrypoint flags have been removed as they are
-# no longer needed when not binding to privileged host ports.
 ExecStart=/usr/bin/docker run --rm --name envoy-svc \
   --network {{ docker_network_name }} \
   -p 80:80 \
