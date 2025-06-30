@@ -1,5 +1,3 @@
-// File: web/grewal-cc-web/src/app/page.tsx
-
 import { Suspense } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -17,7 +15,7 @@ export default function HomePage() {
             Welcome to Grewal.cc
           </h1>
           <p className="text-gray-400 mb-10">
-            A full-stack, multi-language, cloud-native application playground.
+            A full-stack, multi-language, cloud-native application portfolio
           </p>
 
           {/* --- RENDER THE LOGIN FORM COMPONENT --- */}
