@@ -48,8 +48,8 @@ const LoginForm: React.FC<LoginFormProps> = () => {
     <div className="flex items-center justify-center p-6 md:p-12 w-full">
       <div className="mx-auto w-full max-w-[550px] bg-gray-800/50 backdrop-blur-sm p-8 rounded-xl shadow-2xl border border-gray-700">
         <h2 className="text-2xl font-bold text-center text-white mb-6">Grewal.cc Login</h2>
-        
-        <form onSubmit={handleSubmit}> 
+
+        <form onSubmit={handleSubmit}>
           <div className="mb-5">
             <label htmlFor="email" className="mb-3 block text-base font-medium text-gray-300">
               Email Address
@@ -80,7 +80,7 @@ const LoginForm: React.FC<LoginFormProps> = () => {
               className="w-full rounded-md border border-gray-600 bg-gray-700 py-3 px-6 text-base font-medium text-gray-200 placeholder-gray-500 outline-none focus:border-blue-500 focus:shadow-md transition-all duration-300"
             />
           </div>
-          
+
           {/* Display error messages */}
           {error && (
             <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-md text-red-300 text-center">
@@ -89,7 +89,7 @@ const LoginForm: React.FC<LoginFormProps> = () => {
           )}
 
           <div>
-            <button 
+            <button
               type="submit"
               disabled={isLoading}
               className="hover:shadow-blue-500/50 w-full rounded-md bg-blue-600 hover:bg-blue-700 py-3 px-8 text-center text-base font-semibold text-white outline-none shadow-md transition-all duration-300 ease-in-out disabled:bg-gray-500 disabled:cursor-not-allowed"
