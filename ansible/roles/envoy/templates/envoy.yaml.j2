@@ -256,8 +256,8 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: "auth-service.service.consul"
-                      port_value: {{auth_service_host_port | default(3000)}}
+                      address: "auth-service"
+                      port_value: {{auth_service_container_port|default(3000)}}
     - name: nextjs-service-cluster
       connect_timeout: 5s
       type: STRICT_DNS

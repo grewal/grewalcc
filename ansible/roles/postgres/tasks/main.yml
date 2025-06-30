@@ -27,10 +27,5 @@
       - "{{ postgres_host_data_path }}:/var/lib/postgresql/data"
     ports:
       - "127.0.0.1:{{ postgres_host_published_port }}:{{ postgres_container_port }}"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U {{ postgres_user }} -d {{ postgres_db_name }}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
   tags:
     - postgres
