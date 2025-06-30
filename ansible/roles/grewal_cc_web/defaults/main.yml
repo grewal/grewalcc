@@ -1,0 +1,6 @@
+# ansible/roles/grewal_cc_web/defaults/main.yml
+---
+grewal_cc_web_container_name: "grewal-cc-web"
+grewal_cc_web_image_repository: "grewal/grewal-cc-web"
+grewal_cc_web_image_tag: "0.2.0"
+docker_network_name: "grewalnet"

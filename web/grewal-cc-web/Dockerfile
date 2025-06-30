@@ -2,15 +2,14 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package manager files
-COPY package.json package-lock.json ./
+# Copy package manager files from their location within the build context
+COPY web/grewal-cc-web/package.json web/grewal-cc-web/package-lock.json ./
 
 # Install dependencies (including build tools like Tailwind)
 RUN npm ci
 
-# Copy the rest of the application source code,
-# which now INCLUDES the pre-generated src/lib/grpc files.
-COPY . .
+# Copy the rest of the application source code
+COPY web/grewal-cc-web/. .
 
 # Run the production build
 ENV NODE_ENV=production

@@ -10,22 +10,28 @@ export async function POST(request: Request) {
     const authServiceUrl = process.env.AUTH_SERVICE_URL;
 
     // --- START OF MODIFICATION ---
-    // Create an agent that bypasses SSL verification for local dev
-    const dispatcher = new Agent({
-        connect: {
-            rejectUnauthorized: false
-        }
-    });
-    // --- END OF MODIFICATION ---
-    
-    const apiRes = await fetch(`${authServiceUrl}/auth/login`, {
+
+    // Define the options for our fetch call
+    const fetchOptions: RequestInit = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ username_or_email: email, password }),
-      dispatcher
-    });
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+      const dispatcher = new Agent({
+        connect: {
+          rejectUnauthorized: false
+        }
+      });
+      (fetchOptions as any).dispatcher = dispatcher;
+    }
+
+    // --- END OF MODIFICATION ---
+
+    const apiRes = await fetch(`${authServiceUrl}/auth/login`, fetchOptions);
 
     if (!apiRes.ok) {
         const errorText = await apiRes.text();

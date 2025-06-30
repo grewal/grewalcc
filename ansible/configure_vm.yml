@@ -25,7 +25,7 @@
     - authorization_service
     - authentication_service
     - grewalcc
-    - web
+    - grewal_cc_web 
     #- redis_exporter
     - envoy
 
