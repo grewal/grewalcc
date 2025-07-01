@@ -145,6 +145,11 @@ static_resources:
                             cluster: grewalcc_cluster
                             timeout: 15s
                         - match:
+                            prefix: "/api/"
+                          route:
+                            cluster: nextjs-service-cluster
+                            timeout: 15s
+                        - match:
                             prefix: "/"
                           route:
                             cluster: nextjs-service-cluster
@@ -270,7 +275,7 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: "grewal-cc-web.service.consul"
+                      address: "grewal-cc-web"
                       port_value: 3000
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:

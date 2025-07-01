@@ -22,7 +22,8 @@ export default async function HomePage() {
   let user: User | null = null;
 
   if (authToken) {
-    const authServiceUrl = 'http://127.0.0.1:3001/auth/me';
+    // This logic calls the backend service directly via the dev tunnel or prod internal network
+    const authServiceUrl = process.env.AUTH_SERVICE_INTERNAL_URL || 'http://127.0.0.1:3001/auth/me';
     try {
       const res = await fetch(authServiceUrl, {
         headers: {
@@ -32,6 +33,7 @@ export default async function HomePage() {
       });
 
       if (res.ok) {
+        // The /me route returns the user object directly
         user = await res.json();
       } else {
         console.error(`Session validation failed, status: ${res.status}`);
