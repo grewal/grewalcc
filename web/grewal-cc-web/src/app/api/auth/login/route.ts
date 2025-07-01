@@ -4,14 +4,12 @@ import { Agent } from 'undici';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { email, password } = body;
+    const formData = await request.formData();
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
 
     const authServiceUrl = process.env.AUTH_SERVICE_URL;
 
-    // --- START OF MODIFICATION ---
-
-    // Define the options for our fetch call
     const fetchOptions: RequestInit = {
       method: 'POST',
       headers: {
@@ -29,17 +27,15 @@ export async function POST(request: Request) {
       (fetchOptions as any).dispatcher = dispatcher;
     }
 
-    // --- END OF MODIFICATION ---
-
     const apiRes = await fetch(`${authServiceUrl}/auth/login`, fetchOptions);
+    const data = await apiRes.json();
 
     if (!apiRes.ok) {
-        const errorText = await apiRes.text();
-        console.error(`Auth service responded with error: ${apiRes.status} ${errorText}`);
-        throw new Error('Authentication failed');
+      const homeUrl = new URL('/', request.url);
+      homeUrl.searchParams.set('error', data.message || 'Authentication Failed');
+      return NextResponse.redirect(homeUrl);
     }
 
-    const data = await apiRes.json();
     const { access_token } = data;
 
     const serializedCookie = serialize('grewal-cc-auth-token', access_token, {
@@ -49,20 +45,17 @@ export async function POST(request: Request) {
       maxAge: 60 * 60 * 24 * 7,
       path: '/',
     });
-
-    return new NextResponse(
-        JSON.stringify({ success: true, message: 'Login successful' }),
-        {
-          status: 200,
-          headers: { 'Set-Cookie': serializedCookie },
-        }
-    );
+    
+    const redirectUrl = new URL('/', request.url);
+    return NextResponse.redirect(redirectUrl, {
+      status: 303, // See Other
+      headers: { 'Set-Cookie': serializedCookie },
+    });
 
   } catch (error: any) {
     console.error('Login API route error:', error);
-    return NextResponse.json(
-      { message: error.message || 'An internal server error occurred.' },
-      { status: 500 }
-    );
+    const homeUrl = new URL('/', request.url);
+    homeUrl.searchParams.set('error', 'An internal error occurred.');
+    return NextResponse.redirect(homeUrl);
   }
 }
