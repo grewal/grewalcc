@@ -10,12 +10,15 @@
     restart_policy: always
     networks:
       - name: "{{ docker_network_name }}"
+    ports:
+      - "127.0.0.1:{{ grewal_cc_web_host_health_check_port }}:{{ grewal_cc_web_container_port }}"
     labels:
       service: "grewal-cc-web"
       project: "grewal.cc"
     env:
       AUTH_SERVICE_URL: "https://grewal.cc"
       BACKEND_GRPC_URL: "https://grewal.cc"
+  register: grewal_cc_web_container_info
   tags:
     - grewal_cc_web
 
