@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       path: '/',
     });
     
-    const redirectUrl = new URL('/', request.url);
+    const redirectUrl = new URL('/profile', request.url);
     return NextResponse.redirect(redirectUrl, {
       status: 303, // See Other
       headers: { 'Set-Cookie': serializedCookie },
