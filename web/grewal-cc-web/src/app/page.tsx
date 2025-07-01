@@ -7,44 +7,41 @@ import IpInfoShell from '@/components/IpInfoShell';
 import LoginForm from '@/components/LoginForm';
 import LogoutButton from '@/components/LogoutButton';
 
+// This User type must match the UserResponse from your Rust service
 interface User {
+  id: string;
   username: string;
   email: string;
-}
-
-async function getAuthenticatedUser(token: string | undefined): Promise<User | null> {
-  if (!token) {
-    return null;
-  }
-  
-  const apiRouteUrl = 'http://grewal-cc-web:3000/api/auth/me';
-
-  try {
-    const res = await fetch(apiRouteUrl, {
-      headers: {
-        'Cookie': `grewal-cc-auth-token=${token}`,
-      },
-      cache: 'no-store', 
-    });
-
-    if (!res.ok) {
-      console.error(`Failed to fetch user data, status: ${res.status}`);
-      return null;
-    }
-
-    const data = await res.json();
-    return data;
-
-  } catch (error) {
-    console.error(`Error fetching authenticated user from ${apiRouteUrl}:`, error);
-    return null;
-  }
+  roles: string[];
 }
 
 export default async function HomePage() {
   const cookieStore = cookies();
   const authToken = cookieStore.get('grewal-cc-auth-token')?.value;
-  const user = await getAuthenticatedUser(authToken);
+
+  let user: User | null = null;
+
+  if (authToken) {
+    // This logic calls the backend service directly via the dev tunnel or prod internal network
+    const authServiceUrl = process.env.AUTH_SERVICE_INTERNAL_URL || 'http://127.0.0.1:3001/auth/me';
+    try {
+      const res = await fetch(authServiceUrl, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+        cache: 'no-store',
+      });
+
+      if (res.ok) {
+        // The /me route returns the user object directly
+        user = await res.json();
+      } else {
+        console.error(`Session validation failed, status: ${res.status}`);
+      }
+    } catch (error) {
+      console.error(`Error during user session fetch:`, error);
+    }
+  }
   
   return (
     <>
