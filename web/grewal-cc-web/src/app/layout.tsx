@@ -1,21 +1,28 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
+import { IpUaDisplay } from '@/components/IpUaDisplay';
+
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Grewal.cc',
-  description: 'A Live Engineering Portfolio',
-  viewport: 'width=device-width, initial-scale=1',
+  title: 'grewal.cc',
+  description: 'Professional Software Engineering Portfolio',
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="en">
-      <body className="min-h-screen flex flex-col bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+      <body className={inter.className}>
         {children}
+        <footer className="bg-gray-800 text-white p-4 text-center">
+          <p>© 2025 Grewal.cc. All Rights Reserved.</p>
+          <IpUaDisplay />
+        </footer>
       </body>
     </html>
   );
