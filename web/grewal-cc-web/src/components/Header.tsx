@@ -1,12 +1,14 @@
-import { cookies } from 'next/headers';
+'use client';
+
 import Link from 'next/link';
-import LogoutButton from './LogoutButton'; 
+import LogoutButton from './LogoutButton';
+import { LoginModal } from './LoginModal';
 
-export async function Header() {
-  const cookieStore = cookies();
-  const authToken = cookieStore.get('grewal-cc-auth-token')?.value;
-  const isLoggedIn = !!authToken;
+interface HeaderProps {
+  isLoggedIn: boolean;
+}
 
+export function Header({ isLoggedIn }: HeaderProps) {
   return (
     <header className="bg-gray-800 text-white p-4">
       <nav className="container mx-auto flex justify-between items-center">
@@ -27,12 +29,7 @@ export async function Header() {
               <LogoutButton />
             </>
           ) : (
-            <Link
-              href="/login"
-              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
-            >
-              Login
-            </Link>
+            <LoginModal />
           )}
         </div>
       </nav>
