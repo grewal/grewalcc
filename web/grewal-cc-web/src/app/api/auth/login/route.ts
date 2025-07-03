@@ -1,54 +1,62 @@
 import { NextResponse } from 'next/server';
-import { serialize } from 'cookie';
 import { Agent } from 'undici';
+import { serialize } from 'cookie';
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
+    const body = await request.formData();
+    const username_or_email = body.get('username_or_email');
+    const password = body.get('password');
 
     const authServiceUrl = process.env.AUTH_SERVICE_URL;
+    if (!authServiceUrl) {
+      throw new Error('AUTH_SERVICE_URL environment variable is not defined.');
+    }
 
     const fetchOptions: RequestInit = {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username_or_email: email, password }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username_or_email, password }),
     };
 
     if (process.env.NODE_ENV === 'development') {
-      const dispatcher = new Agent({
+      fetchOptions.dispatcher = new Agent({
         connect: {
-          rejectUnauthorized: false
-        }
+          rejectUnauthorized: false,
+        },
       });
-      (fetchOptions as any).dispatcher = dispatcher;
     }
 
-    const apiRes = await fetch(`${authServiceUrl}/auth/login`, fetchOptions);
-    const data = await apiRes.json();
+    const response = await fetch(`${authServiceUrl}/auth/login`, fetchOptions);
 
-    if (!apiRes.ok) {
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Login failed and failed to parse error response.' }));
+      const errorMessage = errorData.message || 'Login failed.';
       const homeUrl = new URL('/', request.url);
-      homeUrl.searchParams.set('error', data.message || 'Authentication Failed');
-      return NextResponse.redirect(homeUrl);
+      homeUrl.searchParams.set('error', errorMessage);
+      return NextResponse.redirect(homeUrl, 303);
+    }
+    
+    const data = await response.json();
+    
+    // Check if the token exists before creating the cookie
+    if (!data.access_token) {
+        throw new Error('Access token not found in authentication service response.');
     }
 
-    const { access_token } = data;
-
-    const serializedCookie = serialize('grewal-cc-auth-token', access_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV !== 'development',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
+    // Use the 'serialize' function to create the cookie string
+    const serializedCookie = serialize('grewal-cc-auth-token', data.access_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV !== 'development',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 60 * 60 * 24, // 1 day
     });
-    
-    const redirectUrl = new URL('/', request.url);
+
+    const redirectUrl = new URL('/profile', request.url);
+    // Set the cookie on the redirect response
     return NextResponse.redirect(redirectUrl, {
-      status: 303, // See Other
+      status: 303,
       headers: { 'Set-Cookie': serializedCookie },
     });
 
@@ -56,6 +64,6 @@ export async function POST(request: Request) {
     console.error('Login API route error:', error);
     const homeUrl = new URL('/', request.url);
     homeUrl.searchParams.set('error', 'An internal error occurred.');
-    return NextResponse.redirect(homeUrl);
+    return NextResponse.redirect(homeUrl, 307);
   }
 }

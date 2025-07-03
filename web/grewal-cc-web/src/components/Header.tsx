@@ -1,21 +1,38 @@
-export default function Header() {
+'use client';
+
+import Link from 'next/link';
+import LogoutButton from './LogoutButton';
+import { LoginModal } from './LoginModal';
+
+interface HeaderProps {
+  isLoggedIn: boolean;
+}
+
+export function Header({ isLoggedIn }: HeaderProps) {
   return (
-    <header className="bg-gray-900 text-white shadow-sm">
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <h1 className="text-xl font-bold">Grewal.cc</h1>
-          </div>
-          <nav className="hidden md:flex space-x-6">
-            <a 
-              href="/" 
-              className="text-gray-300 hover:text-white transition-colors duration-200"
-            >
-              Home
-            </a>
-          </nav>
+    <header className="bg-gray-800 text-white p-4">
+      <nav className="container mx-auto flex justify-between items-center">
+        <div className="text-lg font-bold">
+          <Link href="/" className="hover:text-gray-300">
+            grewal.cc
+          </Link>
         </div>
-      </div>
+        <div className="flex items-center space-x-4">
+          <Link href="/" className="hover:text-gray-300">
+            Home
+          </Link>
+          {isLoggedIn ? (
+            <>
+              <Link href="/profile" className="hover:text-gray-300">
+                Profile
+              </Link>
+              <LogoutButton />
+            </>
+          ) : (
+            <LoginModal />
+          )}
+        </div>
+      </nav>
     </header>
   );
 }
