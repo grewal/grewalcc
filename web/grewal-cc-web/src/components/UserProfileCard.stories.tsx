@@ -1,26 +1,30 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import UserProfileCard from './UserProfileCard';
+import { UserProfileCard } from './UserProfileCard';
+import { AuthenticatedUser } from '@/lib/auth/session';
 
 const meta: Meta<typeof UserProfileCard> = {
   title: 'Components/UserProfileCard',
   component: UserProfileCard,
-  tags: ['autodocs'],
-  argTypes: {
-    user: {
-      control: 'object',
-      description: 'The user data object to display.',
-    },
+  parameters: {
+    layout: 'centered',
   },
 };
 
 export default meta;
-type Story = StoryObj<typeof UserProfileCard>;
+type Story = StoryObj<typeof meta>;
 
-const mockUser = {
-  user_id: '5d4a8e3b-0f2a-4826-ba81-fc07300c9c91',
-  username: 'monty',
-  email: 'ygrewal@gmail.com',
-  roles: ['user', 'admin', 'beta-tester'],
+// Mock user data for the story.
+const mockUser: AuthenticatedUser = {
+  id: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
+  username: 'monty_grewal',
+  email: 'monty.grewal@example.com',
+  roles: ['admin', 'beta-tester', 'subscriber'],
+};
+
+const mockUserWithLongData: AuthenticatedUser = {
+  ...mockUser,
+  username: 'monty_grewal_with_a_very_long_username_to_test_wrapping',
+  email: 'monty.grewal.with.a.super.long.email.address.to.check.layout@example.com',
 };
 
 export const Default: Story = {
@@ -30,12 +34,7 @@ export const Default: Story = {
 };
 
 export const UserWithLongData: Story = {
-  args: {
-    user: {
-      ...mockUser,
-      username: 'a_very_long_username_that_might_break_the_layout',
-      email: 'a_similarly_long_and_contrived_email_address@example.com',
-      roles: ['user', 'admin', 'beta-tester', 'subscriber', 'power-user', 'moderator'],
+    args: {
+        user: mockUserWithLongData,
     },
-  },
 };
