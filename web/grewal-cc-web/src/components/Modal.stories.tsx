@@ -11,7 +11,6 @@ const meta: Meta<typeof Modal> = {
   },
   argTypes: {
     isOpen: { control: 'boolean' },
-    title: { control: 'text' },
     onClose: { action: 'closed' },
   },
 };
@@ -24,7 +23,7 @@ const ModalTemplate: Story = {
     const [isOpen, setIsOpen] = useState(args.isOpen);
 
     const handleClose = () => {
-      args.onClose();
+      args.onClose?.();
       setIsOpen(false);
     };
 

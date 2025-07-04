@@ -1,51 +1,52 @@
 'use client';
 
-import React, { useState, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
-const LogoutButton = () => {
-  const [isLoading, setIsLoading] = useState(false);
+export default function LogoutButton() {
+  const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogout = async (event: FormEvent) => {
-    // 1. Prevent the browser's default navigation behavior
-    event.preventDefault();
-    setIsLoading(true);
-
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    
+    setIsLoggingOut(true);
+    
     try {
-      // 2. Manually make the API call in the background
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      // Make explicit fetch request to logout endpoint
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
 
-      // 3. If the logout was successful, reload the page
-      if (res.ok) {
-        window.location.reload();
+      if (response.ok) {
+        // Force a hard navigation to clear all client-side state
+        window.location.href = '/';
       } else {
-        console.error('Logout failed');
-        setIsLoading(false);
+        console.error('Logout failed:', response.status);
+        // Fallback to client-side navigation
+        router.push('/');
+        router.refresh();
       }
     } catch (error) {
-      console.error('Error during logout:', error);
-      setIsLoading(false);
+      console.error('Logout error:', error);
+      // Fallback to client-side navigation
+      router.push('/');
+      router.refresh();
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
   return (
-    <div className="flex items-center justify-center p-6 md:p-12 w-full">
-      <div className="mx-auto w-full max-w-[550px] bg-gray-800/50 backdrop-blur-sm p-8 rounded-xl shadow-2xl border border-gray-700">
-        <h2 className="text-2xl font-bold text-center text-white mb-6">
-          You are logged in.
-        </h2>
-        
-        <form onSubmit={handleLogout}>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="hover:shadow-red-500/50 w-full rounded-md bg-red-600 hover:bg-red-700 py-3 px-8 text-center text-base font-semibold text-white outline-none shadow-md transition-all duration-300 ease-in-out disabled:bg-gray-500 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Logging out...' : 'Logout'}
-          </button>
-        </form>
-      </div>
-    </div>
+    <button
+      onClick={handleLogout}
+      disabled={isLoggingOut}
+      className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold py-2 px-4 rounded"
+    >
+      {isLoggingOut ? 'Logging out...' : 'Logout'}
+    </button>
   );
-};
-
-export default LogoutButton;
+}
