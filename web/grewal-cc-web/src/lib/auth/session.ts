@@ -29,13 +29,13 @@ export async function getAuthenticatedUser(
     };
 
     if (process.env.NODE_ENV === 'development') {
-      fetchOptions.dispatcher = new Agent({
+      (fetchOptions as any).dispatcher = new Agent({
         connect: {
           rejectUnauthorized: false,
         },
       });
     }
-    
+
     const response = await fetch(`${authServiceUrl}/auth/me`, fetchOptions);
 
     if (response.status === 401) {
@@ -47,18 +47,17 @@ export async function getAuthenticatedUser(
       console.error(`Session validation failed with status: ${response.status}`);
       return null;
     }
-    
+
     const rawUserData = await response.json();
 
-    const userData: AuthenticatedicatedUser = {
+    const userData: AuthenticatedUser = {
       id: rawUserData.user_id,
       username: rawUserData.username,
       email: rawUserData.email,
       roles: rawUserData.roles,
     };
-    
-    return userData;
 
+    return userData;
   } catch (error) {
     console.error('Failed to render user information:', error);
     return null;

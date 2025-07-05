@@ -1,6 +1,6 @@
-# ansible/roles/grewal_cc_web/tasks/main.yml
 ---
-- name: Ensure grewal-cc-web container is running
+# ansible/roles/web_grewal_cc_web/tasks/main.yml
+- name: "Ensure {{ grewal_cc_web_container_name }} container is running"
   community.docker.docker_container:
     name: "{{ grewal_cc_web_container_name }}"
     image: "{{ grewal_cc_web_image_repository }}:{{ grewal_cc_web_image_tag }}"
@@ -18,6 +18,10 @@
     env:
       AUTH_SERVICE_URL: "https://grewal.cc"
       BACKEND_GRPC_URL: "https://grewal.cc"
+      APP_URL: "{{ CANONICAL_APP_URL }}"
+      NEXT_PUBLIC_APP_URL: "{{ CANONICAL_APP_URL }}"
+      NODE_ENV: "production"
+      DEBUG_ENV_VARS: "true"
   register: grewal_cc_web_container_info
   tags:
     - grewal_cc_web
