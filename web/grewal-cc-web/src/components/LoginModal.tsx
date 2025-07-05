@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Modal } from './Modal'; 
+import { Modal } from './Modal';
 import { Button } from './Button';
 import LoginForm from './LoginForm';
 
