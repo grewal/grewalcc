@@ -1,9 +1,12 @@
+// web/grewal-cc-web/src/app/layout.tsx
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { IpUaDisplay } from '@/components/IpUaDisplay';
 import { cookies } from 'next/headers';
 import { Header } from '@/components/Header';
+import { Providers } from './providers';
+import { WasmBackground } from '@/components/WasmBackground';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -22,14 +25,19 @@ export default async function RootLayout({
   const isLoggedIn = !!authToken;
 
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body className={inter.className}>
-        <Header isLoggedIn={isLoggedIn} />
-        {children}
-        <footer className="bg-gray-800 text-white p-4 text-center">
-          <p>© 2025 Grewal.cc. All Rights Reserved.</p>
-          <IpUaDisplay />
-        </footer>
+        <Providers>
+          <WasmBackground />
+          <Header isLoggedIn={isLoggedIn} />
+          <main>
+            {children}
+          </main>
+          <footer className="w-full p-4 text-center">
+            <p>© 2025 Grewal.cc. All Rights Reserved.</p>
+            <IpUaDisplay />
+          </footer>
+        </Providers>
       </body>
     </html>
   );
