@@ -1,6 +1,6 @@
 ---
 # roles/envoy/defaults/main.yml
-envoy_image_tag: "v1.34.0"
+envoy_image_tag: "v1.36.2"
 envoy_image_repository: "envoyproxy/envoy"
 
 # Core envoy variables
