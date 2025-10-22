@@ -1,18 +1,28 @@
 ---
 # ansible/roles/authentication_service/tasks/main.yml
 
+- name: Pull the specified auth-service Docker image
+  community.docker.docker_image:
+    name: "{{ authz_service_image_repository }}:{{ authz_service_image_tag }}"
+    source: pull
+  become: yes
+  tags:
+    - authentication_service
+
 - name: Build DATABASE_URL with explicit string formatting and encoding
   ansible.builtin.set_fact:
     auth_service_database_url: >-
-      postgresql://{{ postgres_user_vault | urlencode }}:{{ postgres_password_vault | urlencode }}@postgres-server:{{ postgres_port | string }}/{{ postgres_db_name_vault }}
+      postgresql://{{ postgres_user_vault | urlencode }}:{{ postgres_password_vault | urlencode }}@postgres:{{ postgres_port | string }}/{{ postgres_db_name_vault }}
+  tags:
+    - authentication_service
 
 - name: Ensure auth-service container is running
   community.docker.docker_container:
     name: "{{ auth_service_container_name }}"
     image: "{{ auth_service_image_repository }}:{{ auth_service_image_tag }}"
     state: started
-    pull: true             # Always check for a newer image version before starting.
-    recreate: true         # Recreate container if image or any other parameter changes.
+    pull: false
+    recreate: true
     restart_policy: always
     ports:
       - "127.0.0.1:{{ auth_service_host_port }}:{{ auth_service_container_port }}"
@@ -33,6 +43,9 @@
     labels:
       service: "auth-service"
       project: "grewal.cc"
+  become: yes
+  tags:
+    - authentication_service
 
 - name: Deploy auth-service Consul service definition
   ansible.builtin.template:
@@ -43,3 +56,5 @@
     mode: '0644'
   become: yes
   notify: Reload Consul Configuration
+  tags:
+    - authentication_service
