@@ -19,15 +19,16 @@
     #- node_exporter
     #- prometheus
     # - grafana
-    - consul
-    - redis
-    - postgres
-    - authorization_service
-    - authentication_service
+    - role: consul
+      tags: ['consul']
+      #- redis
+      #- postgres
+      #- authorization_service
+      #- authentication_service
     - grewalcc
-    - grewal_cc_web 
-    #- redis_exporter
-    - envoy
+      #- grewal_cc_web 
+      #- redis_exporter
+      #- envoy
 
   handlers:
     - name: Reload Consul Configuration
