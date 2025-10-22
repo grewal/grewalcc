@@ -25,7 +25,8 @@
       tags: ['redis']
     - role: postgres
       tags: ['postgres']
-      #- authorization_service
+    - role: authorization_service
+      tags: ['authorization_service']
       #- authentication_service
     - grewalcc
       #- grewal_cc_web 
