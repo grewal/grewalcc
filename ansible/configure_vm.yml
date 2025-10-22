@@ -27,9 +27,12 @@
       tags: ['postgres']
     - role: authorization_service
       tags: ['authorization_service']
-      #- authentication_service
-    - grewalcc
-      #- grewal_cc_web 
+    - role: authentication_service
+      tags: ['authentication_service']
+    - role: grewalcc
+      tags: ['grewalcc']
+    - role: grewal_cc_web
+      tags: ['grewal_cc_web'] 
       #- redis_exporter
       #- envoy
 
