@@ -1,6 +1,12 @@
 ---
 # ansible/roles/consul/tasks/main.yml
 
+- name: Pull the specified Consul Docker image
+  community.docker.docker_image:
+    name: "{{ consul_docker_image_repository }}:{{ consul_docker_image_tag }}"
+    source: pull
+  become: yes
+
 - name: Ensure Consul config directory exists
   ansible.builtin.file:
     path: /etc/consul.d
@@ -44,4 +50,5 @@
     name: consul.service
     state: started
     enabled: yes
+    daemon_reload: yes
   become: yes

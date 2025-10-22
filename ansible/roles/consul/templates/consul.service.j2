@@ -8,20 +8,20 @@ Restart=always
 RestartSec=10s
 
 # Stop and remove any existing container with the same name first
-ExecStartPre=-/usr/bin/docker stop consul-server
-ExecStartPre=-/usr/bin/docker rm consul-server
+ExecStartPre=-/usr/bin/docker stop consul
+ExecStartPre=-/usr/bin/docker rm consul
 
 # Run the Consul server container
 # Mount the config directory /etc/consul.d read-only.
 # Mount the host data directory /opt/consul/data read-write.
 # Use the config DIRECTORY argument.
-ExecStart=/usr/bin/docker run --rm --network host --name consul-server \
+ExecStart=/usr/bin/docker run --rm --network host --name consul \
   -v /etc/consul.d:/etc/consul.d:ro \
   -v /opt/consul/data:/consul/data \
-  hashicorp/consul:1.21 agent -config-dir=/etc/consul.d
+  {{ consul_docker_image_repository }}:{{ consul_docker_image_tag }} agent -config-dir=/etc/consul.d
 
 # Stop the container gracefully
-ExecStop=/usr/bin/docker stop consul-server
+ExecStop=/usr/bin/docker stop consul
 
 [Install]
 WantedBy=multi-user.target

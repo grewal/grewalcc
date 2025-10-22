@@ -1,7 +1,7 @@
 ---
 postgres_image_name: "postgres"
 postgres_image_tag: "17.5-alpine"
-postgres_container_name: "postgres-server"
+postgres_container_name: "postgres"
 postgres_host_data_path: "/opt/postgres/data"
 postgres_backup_dir: "/opt/postgres/backups"
 postgres_backup_script_path: "/usr/local/bin/backup_postgres.sh"
