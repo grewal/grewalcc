@@ -24,7 +24,7 @@ ExecStart=/usr/bin/docker run --rm --name envoy-svc \
   -c /etc/envoy/envoy.yaml \
   --service-node edge-envoy-instance-1 \
   --service-cluster grewalcc_services \
-  -l debug
+  -l info
 
 ExecStop=/usr/bin/docker stop envoy-svc
 
