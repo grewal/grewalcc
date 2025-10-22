@@ -21,7 +21,8 @@
     # - grafana
     - role: consul
       tags: ['consul']
-      #- redis
+    - role: redis
+      tags: ['redis']
       #- postgres
       #- authorization_service
       #- authentication_service
