@@ -34,7 +34,8 @@
     - role: grewal_cc_web
       tags: ['grewal_cc_web'] 
       #- redis_exporter
-      #- envoy
+    - role: envoy
+      tags: ['envoy']
 
   handlers:
     - name: Reload Consul Configuration
