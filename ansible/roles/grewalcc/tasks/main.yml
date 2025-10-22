@@ -1,12 +1,20 @@
 ---
 # tasks file for the 'grewalcc' C++ gRPC service
 
+- name: Pull the specified grewalcc Docker image
+  community.docker.docker_image:
+    name: "{{ grewalcc_image_repository }}:{{ grewalcc_image_tag }}"
+    source: pull
+  become: yes
+  tags:
+    - grewalcc
+
 - name: Ensure grewalcc container is running
   community.docker.docker_container:
     name: "{{ grewalcc_container_name }}"
     image: "{{ grewalcc_image_repository }}:{{ grewalcc_image_tag }}"
     state: started
-    pull: true
+    pull: false
     recreate: true
     restart_policy: always
     networks:
@@ -16,7 +24,9 @@
     labels:
       service: "grewalcc"
       project: "grewal.cc"
-  become: yes # Interact with the Docker daemon socket
+  become: yes
+  tags:
+    - grewalcc
 
 - name: Deploy Consul service definition for grewalcc
   ansible.builtin.template:
@@ -27,3 +37,5 @@
     mode: '0644'
   become: yes
   notify: Reload Consul Configuration
+  tags:
+    - grewalcc
