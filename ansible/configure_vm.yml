@@ -23,7 +23,8 @@
       tags: ['consul']
     - role: redis
       tags: ['redis']
-      #- postgres
+    - role: postgres
+      tags: ['postgres']
       #- authorization_service
       #- authentication_service
     - grewalcc
