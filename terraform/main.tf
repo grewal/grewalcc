@@ -1,5 +1,18 @@
 # main.tf
 
+resource "google_compute_address" "grewalcc_static_ip" {
+  name    = "grewalcc-static-ip-external"
+  project = "mysides"
+  region  = "us-central1"
+
+lifecycle {
+    ignore_changes = [
+      # Ignore auto-populated changes by GCP to the description
+      description,
+    ]
+  }
+}
+
 resource "google_compute_instance" "gcc_gem_a" {
   project      = "mysides" # Explicitly set project, although inherited from provider
   name         = "gcc-gem-a"
@@ -37,9 +50,7 @@ resource "google_compute_instance" "gcc_gem_a" {
     network_ip = "10.128.0.22"
 
     access_config {
-      # This empty block requests an ephemeral external IP, matching:
-      # "natIP": "35.209.221.97" (Ephemeral)
-      # "networkTier": "STANDARD" (Default for ephemeral)
+	nat_ip = google_compute_address.grewalcc_static_ip.address
     }
   }
 
