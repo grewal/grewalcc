@@ -3,7 +3,7 @@
 service {
   name    = "{{ postgres_consul_service_name }}"
   id      = "{{ postgres_consul_service_id }}"
-  tags    = "{{ postgres_consul_tags | to_json }}"
+  tags    = [{{ postgres_consul_tags | map('to_json') | join(', ') }}]
 
   # The address where Consul agent (on host) can reach the service.
   # The postgres container publishes its port to the host's loopback IP.
