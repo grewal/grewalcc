@@ -1,28 +1,44 @@
 ---
-# ansible/roles/web_grewal_cc_web/tasks/main.yml
-- name: "Ensure {{ grewal_cc_web_container_name }} container is running"
+# ansible/roles/grewal_cc_web/tasks/main.yml
+
+- name: Pull the specified grewal-cc-web Docker image
+  community.docker.docker_image:
+    name: "{{ grewal_cc_web_image_repository }}:{{ grewal_cc_web_image_tag }}"
+    source: pull
+  become: yes
+  tags:
+    - grewal_cc_web
+
+- name: Ensure grewal-cc-web container is running with correct internal URLs and secrets
   community.docker.docker_container:
     name: "{{ grewal_cc_web_container_name }}"
     image: "{{ grewal_cc_web_image_repository }}:{{ grewal_cc_web_image_tag }}"
     state: started
-    pull: true
+    pull: false
     recreate: true
     restart_policy: always
     networks:
       - name: "{{ docker_network_name }}"
     ports:
+      # Port is only published to loopback for Consul health checks
       - "127.0.0.1:{{ grewal_cc_web_host_health_check_port }}:{{ grewal_cc_web_container_port }}"
     labels:
       service: "grewal-cc-web"
       project: "grewal.cc"
     env:
-      AUTH_SERVICE_URL: "https://grewal.cc"
-      BACKEND_GRPC_URL: "https://grewal.cc"
-      APP_URL: "{{ CANONICAL_APP_URL }}"
-      NEXT_PUBLIC_APP_URL: "{{ CANONICAL_APP_URL }}"
+      # Use internal Docker DNS names for service-to-service communication
+      AUTH_SERVICE_URL: "http://auth-service:{{ auth_service_container_port }}"
+      BACKEND_GRPC_URL: "grewalcc:{{ grewalcc_container_port }}"
+      
+      # --- CRITICAL JWT SECRETS ---
+      AUTH_SERVICE_JWT_PRIVATE_KEY_PEM: "{{ auth_service_jwt_private_key_pem_vault }}"
+      AUTH_SERVICE_JWT_PUBLIC_KEY_PEM: "{{ auth_service_jwt_public_key_pem_vault }}"
+      
+      # --- OTHER VARS ---
+      APP_URL: "{{ CANONICAL_APP_URL | default('https://grewal.cc') }}"
+      NEXT_PUBLIC_APP_URL: "{{ CANONICAL_APP_URL | default('https://grewal.cc') }}"
       NODE_ENV: "production"
-      DEBUG_ENV_VARS: "true"
-  register: grewal_cc_web_container_info
+  become: yes
   tags:
     - grewal_cc_web
 
