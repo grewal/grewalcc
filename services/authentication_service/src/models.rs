@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use secrecy::SecretString; // <-- ADDED
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
@@ -24,12 +25,13 @@ pub struct LoginUserRequest {
 }
 
 // --- Database Model Struct ---
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct User {
     pub id: Uuid,
     pub username: String,
     pub email: String,
-    pub hashed_password: String,
+    #[serde(skip_serializing)]
+    pub hashed_password: SecretString,
     pub roles: Option<JsonValue>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -76,12 +78,12 @@ pub struct LoginSuccessResponse {
 }
 
 // --- JWT Claims Struct ---
-#[derive(Debug, Serialize, Deserialize, Clone)] // Added Clone
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     // Standard claims
-    pub sub: String, 
-    pub exp: i64,    
-    pub iat: i64,    
+    pub sub: String,
+    pub exp: i64,
+    pub iat: i64,
     // Custom private claims
     pub user_id: Uuid,
     pub roles: Vec<String>,

@@ -9,58 +9,49 @@
     owner: nobody
     group: nogroup
     mode: '0755'
-  become: yes # Elevate privileges to create/manage directory in /opt
+  become: yes
 
 # Task 2: Ensure Redis container is running using docker_container
-- name: Set Redis password as resolved string
-  set_fact:
-    redis_password_resolved: "{{ redis_password }}"
-- name: Ensure Redis container is running (Lean Config)
+- name: Ensure Redis container is running (with AOF Persistence)
   community.docker.docker_container:
     # --- Container Identification ---
     name: "{{ redis_container_name }}"
     image: "{{ redis_image_repository }}:{{ redis_image_tag }}"
 
     # --- State Management ---
-    state: started         # Ensures the container is present and running.
-    pull: true             # Always tries to pull the specified image tag before starting.
-                           # If the image digest for 8.0-rc1-alpine changes on Docker Hub later,
-                           # this will pull the update.
-    recreate: true         # If the pulled image is different OR if any parameters below change,
-                           # Ansible will stop/remove the old container and create a new one.
-                           # Essential for applying updates correctly.
-    restart_policy: always # Tells the Docker daemon to automatically restart the container
-                           # if it stops for any reason (crash, host reboot).
-    networks: 
+    state: started
+    pull: true
+    recreate: true
+    restart_policy: always
+    networks:
       - name: "grewalnet"
     timeout: 120
-   
+
     # --- Container Configuration ---
     entrypoint: /usr/local/bin/redis-server
 
-    # --- Provide arguments directly to redis-server via 'command' (as a LIST) ---
+    # --- Command with AOF Persistence ENABLED ---
     command:
       - "--save"
       - ""
       - "--appendonly"
-      - "no"
+      - "yes"
       - "--requirepass"
       - "{{ redis_password }}"
+      
     ports:
       - "127.0.0.1:{{ redis_port | default(6379) }}:{{ redis_port | default(6379) }}"
 
-    # volumes:
-    #   - "{{ redis_data_dir_host }}:/data" # to disable disk persistence.
-    
+    # --- Volumes for Persistence ENABLED ---
+    volumes:
+      - "{{ redis_data_dir_host }}:/data"
+
     labels:
       service: redis
       managed_by: ansible
-  
-  become: no
 
-  # --- Capturing Output ---
-  register: redis_container_result # Store the outcome of this task (ok, changed, failed)
-                                    # in a variable named 'redis_container_result'.
+  become: yes
+  register: redis_container_result
 
 # Task 3: Show if the container state changed
 - name: Show Redis container result status
@@ -71,11 +62,10 @@
 # Task 4: Deploy Consul service definition for Redis
 - name: Deploy Consul service definition for Redis
   ansible.builtin.template:
-    src: redis-service.hcl.j2                        # The template file in roles/redis/templates/
-    dest: "/etc/consul.d/redis-service.hcl"          # Destination path on the VM
-    owner: consul                                    # Correct owner for Consul agent to read
-    group: consul                                    # Correct group
-    mode: '0644'                                     # Standard permissions
-  become: yes                                          # Need root privileges to write to /etc/consul.d
-  notify: Reload Consul Configuration                  # Name of the handler in configure_vm.yml
-                                                       # This tells Consul to reload its config if this file changes.
+    src: redis-service.hcl.j2
+    dest: "/etc/consul.d/redis-service.hcl"
+    owner: consul
+    group: consul
+    mode: '0644'
+  become: yes
+  notify: Reload Consul Configuration
