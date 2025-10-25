@@ -23,8 +23,6 @@
       tags: ['consul']
     - role: redis
       tags: ['redis']
-    - role: postgres
-      tags: ['postgres']
     - role: authorization_service
       tags: ['authorization_service']
     - role: authentication_service

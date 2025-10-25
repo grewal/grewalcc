@@ -4,7 +4,6 @@ use axum::{
     Router,
     middleware as axum_middleware,
 };
-use sqlx::PgPool;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
 use tracing::{error, info, Level, debug};
@@ -27,7 +26,7 @@ use crate::middleware::auth_middleware as app_auth_middleware;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db_pool: PgPool,
+    pub redis_client: redis::Client,
     pub config: Arc<AppConfig>,
     pub token_service: Arc<TokenService>,
 }
@@ -36,7 +35,7 @@ pub struct AppState {
 async fn main() -> Result<(), AppError> {
     dotenvy::dotenv().ok();
 
-    let log_level_str = std::env::var("RUST_LOG").unwrap_or_else(|_| "info,authentication=debug,sqlx=warn,jsonwebtoken=debug".to_string());
+    let log_level_str = std::env::var("RUST_LOG").unwrap_or_else(|_| "info,authentication=debug,jsonwebtoken=debug".to_string());
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .with_env_filter(EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new(&log_level_str)).unwrap_or_else(|e| {
@@ -62,32 +61,8 @@ async fn main() -> Result<(), AppError> {
     };
     info!(version = env!("CARGO_PKG_VERSION"), "Application configuration loaded successfully.");
 
-    info!(database_url = %app_config.db_config.database_url, "Connecting to database...");
-    let db_pool = crate::db::create_db_pool(&app_config.db_config).await?;
-    
-    info!("Applying database migrations...");
-    match sqlx::migrate!("./migrations").run(&db_pool).await {
-        Ok(_) => info!("Database migrations applied successfully."),
-        Err(e) => {
-            error!("Failed to apply database migrations: {:?}", e);
-            return Err(AppError::InternalServerError(format!(
-                "Database migration failed: {}",
-                e
-            )));
-        }
-    }
-    
-    match sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM users")
-        .fetch_one(&db_pool)
-        .await
-    {
-        Ok((count,)) => {
-            info!(user_count = count, "Successfully queried users table. Initial user count: {}", count);
-        }
-        Err(e) => {
-            error!("Failed to query users table after migration: {}", e);
-        }
-    }
+    info!("Connecting to Redis...");
+    let redis_client = crate::db::create_redis_client(&app_config.redis_config).await?;
 
     let cloned_jwt_config: config::JwtConfig = app_config.jwt_config.clone();
     let jwt_config_arc_for_service: Arc<config::JwtConfig> = Arc::new(cloned_jwt_config);
@@ -95,7 +70,7 @@ async fn main() -> Result<(), AppError> {
     info!("TokenService initialized successfully.");
 
     let app_state = Arc::new(AppState {
-        db_pool,
+        redis_client,
         config: Arc::clone(&app_config),
         token_service: Arc::clone(&token_service),
     });
@@ -103,7 +78,6 @@ async fn main() -> Result<(), AppError> {
     // Define protected routes that need AppState for the middleware
     let protected_routes = Router::new()
         .route("/me", get(get_current_user_handler))
-        // Add other protected routes here later
         .route_layer(axum_middleware::from_fn_with_state(Arc::clone(&app_state), app_auth_middleware));
 
     // Define public routes
@@ -113,8 +87,8 @@ async fn main() -> Result<(), AppError> {
 
     // Combine routers
     let app = Router::new()
-        .route("/health", get(health_check_handler)) // Health check is public
-        .nest("/auth", public_routes.merge(protected_routes)) // Nest all /auth routes
+        .route("/health", get(health_check_handler))
+        .nest("/auth", public_routes.merge(protected_routes))
         .with_state(app_state);
 
     let listen_addr_str = format!("{}:{}", app_config.app_host, app_config.app_port);
@@ -155,11 +129,9 @@ async fn main() -> Result<(), AppError> {
 
     Ok(())
 }
-    
+
 async fn health_check_handler(State(state): State<Arc<AppState>>) -> &'static str {
     debug!(
-        db_pool_connections = state.db_pool.size(),
-        db_pool_idle = state.db_pool.num_idle(),
         config_app_port = state.config.app_port,
         "Health check endpoint hit"
     );

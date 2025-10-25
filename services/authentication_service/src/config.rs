@@ -1,6 +1,5 @@
 // src/config.rs
 
-use crate::db::DbConfig;
 use anyhow::Context;
 use secrecy::SecretString;
 use std::env;
@@ -16,10 +15,15 @@ pub struct JwtConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct RedisConfig {
+    pub url: SecretString,
+}
+
+#[derive(Debug, Clone)]
 pub struct AppConfig {
     pub app_host: String,
     pub app_port: u16,
-    pub db_config: DbConfig,
+    pub redis_config: RedisConfig,
     pub jwt_config: JwtConfig,
 }
 
@@ -38,23 +42,15 @@ pub async fn load_config() -> anyhow::Result<AppConfig> {
     ))?;
     tracing::debug!(app_host = %app_host, app_port = app_port, "Application host and port configured.");
 
-    let database_url = env::var("DATABASE_URL")
-        .context("DATABASE_URL environment variable must be set")?;
-    let db_max_connections_str = env::var("DB_MAX_CONNECTIONS").unwrap_or_else(|_| DbConfig::default().max_connections.to_string());
-    let db_min_connections_str = env::var("DB_MIN_CONNECTIONS").unwrap_or_else(|_| DbConfig::default().min_connections.to_string());
-    let db_acquire_timeout_str = env::var("DB_ACQUIRE_TIMEOUT_SECONDS").unwrap_or_else(|_| DbConfig::default().acquire_timeout_seconds.to_string());
-    let db_idle_timeout_str = env::var("DB_IDLE_TIMEOUT_SECONDS").unwrap_or_else(|_| DbConfig::default().idle_timeout_seconds.to_string());
-    let db_max_lifetime_str = env::var("DB_MAX_LIFETIME_SECONDS").unwrap_or_else(|_| DbConfig::default().max_lifetime_seconds.to_string());
-
-    let db_config = DbConfig {
-        database_url,
-        max_connections: db_max_connections_str.parse().context(format!("Invalid DB_MAX_CONNECTIONS: {}", db_max_connections_str))?,
-        min_connections: db_min_connections_str.parse().context(format!("Invalid DB_MIN_CONNECTIONS: {}", db_min_connections_str))?,
-        acquire_timeout_seconds: db_acquire_timeout_str.parse().context(format!("Invalid DB_ACQUIRE_TIMEOUT_SECONDS: {}", db_acquire_timeout_str))?,
-        idle_timeout_seconds: db_idle_timeout_str.parse().context(format!("Invalid DB_IDLE_TIMEOUT_SECONDS: {}", db_idle_timeout_str))?,
-        max_lifetime_seconds: db_max_lifetime_str.parse().context(format!("Invalid DB_MAX_LIFETIME_SECONDS: {}", db_max_lifetime_str))?,
+    // --- Start of Database Configuration Changes ---
+    let redis_url = env::var("REDIS_URL")
+        .context("REDIS_URL environment variable must be set")?;
+    
+    let redis_config = RedisConfig {
+        url: SecretString::new(redis_url),
     };
-    tracing::debug!(db_config = ?db_config, "Database configuration loaded.");
+    tracing::debug!("Redis configuration loaded.");
+    // --- End of Database Configuration Changes ---
 
     let raw_jwt_private_key_pem = env::var("AUTH_SERVICE_JWT_PRIVATE_KEY_PEM")
         .context("AUTH_SERVICE_JWT_PRIVATE_KEY_PEM environment variable must be set")?;
@@ -86,7 +82,6 @@ pub async fn load_config() -> anyhow::Result<AppConfig> {
     })?;
     tracing::debug!(jwt_algorithm = ?jwt_algorithm, access_token_lifetime_sec = jwt_access_token_expires_in_seconds, "JWT parameters configured.");
 
-    // THIS IS THE CORRECTED BLOCK
     let jwt_c = JwtConfig {
         private_key_pem_pkcs8: jwt_private_key_pem_pkcs8,
         public_key_pem_pkcs8: jwt_public_key_pem_pkcs8,
@@ -98,7 +93,7 @@ pub async fn load_config() -> anyhow::Result<AppConfig> {
     Ok(AppConfig {
         app_host,
         app_port,
-        db_config,
+        redis_config,
         jwt_config: jwt_c,
     })
 }

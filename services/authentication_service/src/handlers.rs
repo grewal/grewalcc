@@ -12,7 +12,7 @@ use axum::{
     extract::{Extension, State},
     Json,
 };
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use std::sync::Arc;
 use validator::Validate;
 
@@ -23,14 +23,7 @@ pub async fn register_user_handler(
 ) -> Result<Json<UserResponse>, AppError> {
     tracing::info!(username = %payload.username, email = %payload.email, "Received registration request");
 
-    payload.validate().map_err(|e| {
-        let mut errors = std::collections::HashMap::new();
-        for (field, field_errors) in e.field_errors() {
-            let messages: Vec<String> = field_errors.iter().map(|fe| fe.message.as_ref().unwrap_or(&"Invalid input".into()).to_string()).collect();
-            errors.insert(field.to_string(), messages.join(", "));
-        }
-        AppError::InputValidationError(errors)
-    })?;
+    payload.validate()?;
 
     let hashed_password =
         password_service::hash_password(SecretString::new(payload.password)).await?;
@@ -43,7 +36,7 @@ pub async fn register_user_handler(
         roles: default_roles,
     };
 
-    let created_user = db::create_user(&state.db_pool, new_db_user).await?;
+    let created_user = db::create_user(&state.redis_client, new_db_user).await?;
     let user_response = UserResponse::from(&created_user);
 
     tracing::info!(user_id = %user_response.id, "User registration successful");
@@ -58,16 +51,9 @@ pub async fn login_user_handler(
 ) -> Result<Json<LoginSuccessResponse>, AppError> {
     tracing::info!(identifier = %payload.username_or_email, "Received login request");
 
-    payload.validate().map_err(|e| {
-        let mut errors = std::collections::HashMap::new();
-        for (field, field_errors) in e.field_errors() {
-            let messages: Vec<String> = field_errors.iter().map(|fe| fe.message.as_ref().unwrap_or(&"Invalid input".into()).to_string()).collect();
-            errors.insert(field.to_string(), messages.join(", "));
-        }
-        AppError::InputValidationError(errors)
-    })?;
+    payload.validate()?;
 
-    let user = match db::get_user_by_username_or_email(&state.db_pool, &payload.username_or_email).await? {
+    let user = match db::get_user_by_username_or_email(&state.redis_client, &payload.username_or_email).await? {
         Some(user) => user,
         None => {
             tracing::warn!("Login attempt failed: User not found for identifier '{}'", payload.username_or_email);
@@ -78,7 +64,7 @@ pub async fn login_user_handler(
     };
 
     let password_valid = password_service::verify_password(
-        &user.hashed_password,
+        user.hashed_password.expose_secret(),
         SecretString::new(payload.password),
     )
     .await?;
@@ -91,11 +77,10 @@ pub async fn login_user_handler(
     }
 
     let token_service = state.token_service.clone();
-    // MODIFIED: Pass user.email to generate_access_token
     let access_token = token_service.generate_access_token(
         user.id,
         &user.username,
-        &user.email, // Pass the email
+        &user.email,
         &user.get_roles_vec(),
     )?;
 
@@ -110,8 +95,8 @@ pub async fn login_user_handler(
 
 // --- Get Current User Handler (Protected) ---
 pub async fn get_current_user_handler(
-    Extension(authenticated_user): Extension<AuthenticatedUser>, // Extract from request extensions
-) -> Result<Json<AuthenticatedUser>, AppError> { // Return AuthenticatedUser directly
+    Extension(authenticated_user): Extension<AuthenticatedUser>,
+) -> Result<Json<AuthenticatedUser>, AppError> {
     tracing::info!(user_id = %authenticated_user.user_id, username = %authenticated_user.username, "Serving /auth/me request for authenticated user");
     Ok(Json(authenticated_user))
 }
