@@ -1,56 +1,21 @@
+// src/db.rs
+use crate::config::RedisConfig;
 use crate::errors::AppError;
 use crate::models::User;
-use sqlx::{postgres::PgPoolOptions, PgPool};
-use std::time::Duration;
-use serde_json::Value as JsonValue;
+use redis::{AsyncCommands, FromRedisValue, RedisResult, Value};
+use secrecy::{ExposeSecret, SecretString};
+use uuid::Uuid;
+use chrono::{Utc, DateTime};
+use std::collections::HashMap;
 
-// --- DbConfig & create_db_pool ---
-#[derive(Debug, Clone)]
-pub struct DbConfig {
-    pub database_url: String,
-    pub max_connections: u32,
-    pub min_connections: u32,
-    pub acquire_timeout_seconds: u64,
-    pub idle_timeout_seconds: u64,
-    pub max_lifetime_seconds: u64,
-}
-
-impl Default for DbConfig {
-    fn default() -> Self {
-        Self {
-            database_url: String::new(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout_seconds: 10,
-            idle_timeout_seconds: 600,
-            max_lifetime_seconds: 1800,
-        }
-    }
-}
-
-pub async fn create_db_pool(config: &DbConfig) -> Result<PgPool, AppError> {
-    tracing::info!(
-        database_url = %config.database_url,
-        max_connections = config.max_connections,
-        min_connections = config.min_connections,
-        acquire_timeout_seconds = config.acquire_timeout_seconds,
-        "Initializing PostgreSQL connection pool..."
-    );
-    let pool_options = PgPoolOptions::new()
-        .max_connections(config.max_connections)
-        .min_connections(config.min_connections)
-        .acquire_timeout(Duration::from_secs(config.acquire_timeout_seconds))
-        .idle_timeout(Duration::from_secs(config.idle_timeout_seconds))
-        .max_lifetime(Duration::from_secs(config.max_lifetime_seconds));
-    let pool = pool_options
-        .connect(&config.database_url)
-        .await
-        .map_err(|e| {
-            tracing::error!(error.cause_chain = ?e, "Failed to create PostgreSQL connection pool");
-            AppError::DatabaseConnectionFailed(e.to_string())
-        })?;
-    tracing::info!("PostgreSQL connection pool successfully created.");
-    Ok(pool)
+pub async fn create_redis_client(config: &RedisConfig) -> Result<redis::Client, AppError> {
+    tracing::info!("Initializing Redis client...");
+    let client = redis::Client::open(config.url.expose_secret().as_str()).map_err(|e| {
+        tracing::error!(error.cause_chain = ?e, "Failed to create Redis client");
+        AppError::DatabaseConnectionFailed(e.to_string())
+    })?;
+    tracing::info!("Redis client created. A connection will be established on first use.");
+    Ok(client)
 }
 
 #[derive(Debug)]
@@ -61,128 +26,97 @@ pub struct NewDbUser {
     pub roles: Vec<String>,
 }
 
-// --- create_user Function ---
-pub async fn create_user(pool: &PgPool, new_db_user: NewDbUser) -> Result<User, AppError> {
-    tracing::debug!(
-        username = %new_db_user.username,
-        email = %new_db_user.email,
-        "Attempting to create new user in database"
-    );
+struct UserFromRedis(HashMap<String, String>);
 
-    let roles_for_insert: Option<JsonValue> = if new_db_user.roles.is_empty() {
-        None
-    } else {
-        match serde_json::to_value(&new_db_user.roles) {
-            Ok(val) => Some(val),
-            Err(e) => {
-                tracing::error!("Failed to serialize roles to JSON for insertion: {:?}", e);
-                return Err(AppError::SerializationError(format!("Failed to serialize roles: {}", e)));
-            }
-        }
-    };
-
-    let created_user_result = sqlx::query_as!(
-        User,
-        r#"
-        INSERT INTO users (username, email, hashed_password, roles)
-        VALUES ($1, $2, $3, $4)
-        RETURNING
-            id,
-            username,
-            email,
-            hashed_password,
-            roles, 
-            created_at,
-            updated_at
-        "#,
-        new_db_user.username,
-        new_db_user.email,
-        new_db_user.hashed_password,
-        roles_for_insert as Option<JsonValue>
-    )
-    .fetch_one(pool)
-    .await;
-
-    match created_user_result {
-        Ok(user) => {
-            tracing::info!(user_id = %user.id, username = %user.username, "Successfully created new user");
-            Ok(user)
-        }
-        Err(sqlx_err) => {
-            if let Some(db_err) = sqlx_err.as_database_error() {
-                if db_err.code() == Some(std::borrow::Cow::from("23505")) {
-                    let constraint_name = db_err.constraint().unwrap_or_default().to_lowercase();
-                    let (field, message) = if constraint_name.contains("username") {
-                        ("username", "A user with this username already exists.")
-                    } else if constraint_name.contains("email") {
-                        ("email", "A user with this email address already exists.")
-                    } else {
-                        ("unknown_unique_field", "A conflicting unique value already exists.")
-                    };
-
-                    tracing::warn!(
-                        "Unique constraint violation during user creation for field '{}' (constraint: {}): {:?}",
-                        field, constraint_name, db_err
-                    );
-                    return Err(AppError::ConflictError {
-                        field: field.to_string(),
-                        message: message.to_string(),
-                    });
-                }
-            }
-            tracing::error!("Database error during user creation: {:?}", sqlx_err);
-            Err(AppError::DatabaseQueryError(sqlx_err))
-        }
+impl FromRedisValue for UserFromRedis {
+    fn from_redis_value(v: &Value) -> RedisResult<Self> {
+        let map: HashMap<String, String> = redis::from_redis_value(v)?;
+        Ok(UserFromRedis(map))
     }
 }
 
-// --- Fetch a user by username OR email ---
-pub async fn get_user_by_username_or_email(
-    pool: &PgPool,
-    username_or_email: &str,
-) -> Result<Option<User>, AppError> {
-    tracing::debug!(identifier = %username_or_email, "Attempting to fetch user by username or email");
+impl TryFrom<UserFromRedis> for User {
+    type Error = AppError;
 
-    let is_email = username_or_email.contains('@');
+    fn try_from(redis_data: UserFromRedis) -> Result<Self, Self::Error> {
+        let map = redis_data.0;
+        let get_field = |key: &str| -> Result<String, AppError> {
+            map.get(key).cloned().ok_or_else(|| AppError::TypeConversionError(format!("Missing field '{}' in Redis hash", key)))
+        };
 
-    let user_result = if is_email {
-        sqlx::query_as!(
-            User, // User.roles is Option<JsonValue>
-            r#"
-            SELECT id, username, email, hashed_password, roles, created_at, updated_at
-            FROM users
-            WHERE lower(email) = lower($1)
-            "#,
-            username_or_email
-        )
-        .fetch_optional(pool)
-        .await
+        Ok(User {
+            id: Uuid::parse_str(&get_field("id")?).map_err(|_| AppError::TypeConversionError("Invalid UUID format for id".to_string()))?,
+            username: get_field("username")?,
+            email: get_field("email")?,
+            hashed_password: SecretString::new(get_field("hashed_password")?), // Correctly wrapped
+            roles: match map.get("roles") {
+                Some(roles_json) if !roles_json.is_empty() => Some(serde_json::from_str(roles_json).map_err(|_| AppError::TypeConversionError("Invalid JSON for roles".to_string()))?),
+                _ => None,
+            },
+            created_at: DateTime::parse_from_rfc3339(&get_field("created_at")?).map_err(|_| AppError::TypeConversionError("Invalid created_at format".to_string()))?.with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339(&get_field("updated_at")?).map_err(|_| AppError::TypeConversionError("Invalid updated_at format".to_string()))?.with_timezone(&Utc),
+        })
+    }
+}
+
+pub async fn create_user(client: &redis::Client, new_db_user: NewDbUser) -> Result<User, AppError> {
+    let mut con = client.get_multiplexed_async_connection().await.map_err(AppError::DatabaseQueryError)?;
+    let user_id = Uuid::new_v4();
+    let now = Utc::now().to_rfc3339();
+    let user_key = format!("user:{}", user_id);
+    let username_key = format!("username:{}", new_db_user.username.to_lowercase());
+    let email_key = format!("email:{}", new_db_user.email.to_lowercase());
+
+    let (username_exists, email_exists): (bool, bool) = redis::pipe()
+        .exists(&username_key).exists(&email_key).query_async(&mut con).await?;
+
+    if username_exists { return Err(AppError::ConflictError { field: "username".into(), message: "Username already exists.".into() }); }
+    if email_exists { return Err(AppError::ConflictError { field: "email".into(), message: "Email already exists.".into() }); }
+
+    let roles_json = serde_json::to_string(&new_db_user.roles).map_err(|e| AppError::SerializationError(e.to_string()))?;
+
+    let user_data = &[
+        ("id", user_id.to_string()), ("username", new_db_user.username), ("email", new_db_user.email),
+        ("hashed_password", new_db_user.hashed_password), ("roles", roles_json),
+        ("created_at", now.clone()), ("updated_at", now),
+    ];
+
+    redis::pipe().atomic()
+        .hset_multiple(&user_key, user_data)
+        .set(&username_key, user_id.to_string())
+        .set(&email_key, user_id.to_string())
+        .query_async::<()>(&mut con).await?;
+    
+    get_user_by_id(client, user_id).await?.ok_or_else(|| AppError::InternalServerError("Failed to retrieve user after creation".into()))
+}
+
+pub async fn get_user_by_username_or_email(client: &redis::Client, username_or_email: &str) -> Result<Option<User>, AppError> {
+    let mut con = client.get_multiplexed_async_connection().await.map_err(AppError::DatabaseQueryError)?;
+    let lookup_key = if username_or_email.contains('@') {
+        format!("email:{}", username_or_email.to_lowercase())
     } else {
-        sqlx::query_as!(
-            User, // User.roles is Option<JsonValue>
-            r#"
-            SELECT id, username, email, hashed_password, roles, created_at, updated_at
-            FROM users
-            WHERE lower(username) = lower($1)
-            "#,
-            username_or_email
-        )
-        .fetch_optional(pool)
-        .await
+        format!("username:{}", username_or_email.to_lowercase())
     };
 
-    match user_result {
-        Ok(Some(user)) => {
-            tracing::info!(user_id = %user.id, "User found for identifier: {}", username_or_email);
-            Ok(Some(user))
+    let user_id: Option<String> = con.get(lookup_key).await?;
+    match user_id {
+        Some(id_str) => {
+            let user_id_uuid = Uuid::parse_str(&id_str).map_err(|_| AppError::TypeConversionError("Invalid UUID format in index".into()))?;
+            get_user_by_id(client, user_id_uuid).await
         }
-        Ok(None) => {
-            tracing::info!("No user found for identifier: {}", username_or_email);
-            Ok(None)
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "Database error while fetching user by identifier: {}", username_or_email);
-            Err(AppError::DatabaseQueryError(e))
-        }
+        None => Ok(None),
     }
+}
+
+pub async fn get_user_by_id(client: &redis::Client, user_id: Uuid) -> Result<Option<User>, AppError> {
+    let mut con = client.get_multiplexed_async_connection().await.map_err(AppError::DatabaseQueryError)?;
+    let user_key = format!("user:{}", user_id);
+
+    let redis_user: UserFromRedis = con.hgetall(user_key).await?;
+    if redis_user.0.is_empty() {
+        return Ok(None);
+    }
+    
+    let user = User::try_from(redis_user)?;
+    Ok(Some(user))
 }
