@@ -1,19 +1,16 @@
 # FILE: go/Dockerfile
-# Assumes eBPF object and Go bindings are pre-generated and in the repository.
 
 # --- Stage 1: Go Builder ---
 FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
-# Copy Go module files and download dependencies
-COPY go/go.mod go/go.sum ./
+COPY services/authorization/go/go.mod services/authorization/go/go.sum ./
 RUN go mod download
 
-# Copy the rest of the Go source code.
-COPY go/. ./
+COPY services/authorization/go/ ./
 
-# Build the final Go binary. No bpf2go or C compilation needed here.
+# Build the final Go binary. The 'go:embed' directive will handle the .o file.
 RUN go build -ldflags="-s -w" -o /authz-service .
 
 
@@ -24,9 +21,6 @@ RUN apk add --no-cache ca-certificates
 
 # Copy the Go binary from the builder stage
 COPY --from=builder /authz-service /usr/local/bin/authz-service
-
-# Copy the pre-compiled eBPF object file
-COPY ebpf/kernel/xdp_ip_blocker.o /app/ebpf/kernel/xdp_ip_blocker.o
 
 # Set default environment variables
 ENV XDP_GLOBAL_ENABLED=true

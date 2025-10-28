@@ -33,27 +33,27 @@ type XDPMapSyncer interface {
 }
 
 const (
-	ipBlocklistKVKey              = "config/security/ip_blocklist"
-	uaBlocklistKVKey              = "config/security/ua_blocklist"
-	l7RateLimitEnabledKey         = "config/security/ratelimit/enabled"
-	l7RateLimitLimitPerWindowKey  = "config/security/ratelimit/limit_per_window"
-	l7RateLimitWindowSecondsKey   = "config/security/ratelimit/window_seconds"
-	l4ConnRateLimitEnabledKey     = "config/security/l4_conn_ratelimit/enabled"
+	ipBlocklistKVKey                 = "config/security/ip_blocklist"
+	uaBlocklistKVKey                 = "config/security/ua_blocklist"
+	l7RateLimitEnabledKey            = "config/security/ratelimit/enabled"
+	l7RateLimitLimitPerWindowKey     = "config/security/ratelimit/limit_per_window"
+	l7RateLimitWindowSecondsKey      = "config/security/ratelimit/window_seconds"
+	l4ConnRateLimitEnabledKey        = "config/security/l4_conn_ratelimit/enabled"
 	l4ConnRateLimitLimitPerWindowKey = "config/security/l4_conn_ratelimit/limit_per_window"
 	l4ConnRateLimitWindowSecondsKey  = "config/security/l4_conn_ratelimit/window_seconds"
-	l4XDPBlocklistLogicEnabledKey = "config/security/l4_xdp_blocklist_logic/enabled"
-	xdpGlobalEnabledKey           = "config/security/xdp/enabled"
+	l4XDPBlocklistLogicEnabledKey    = "config/security/l4_xdp_blocklist_logic/enabled"
+	xdpGlobalEnabledKey              = "config/security/xdp/enabled"
 )
 
 const (
-	defaultL7RateLimitEnabled         = false
-	defaultL7RateLimitCount           = 100
-	defaultL7RateLimitWindowSeconds   = 60
-	defaultL4ConnRateLimitEnabled     = false
-	defaultL4ConnRateLimitCount       = 50
-	defaultL4ConnRateLimitWindowSeconds = 10
-	defaultL4XDPBlocklistLogicEnabled = true
-	defaultXDPGlobalEnabled           = true
+	defaultL7RateLimitEnabled           = false
+	defaultL7RateLimitCount             = 100
+	defaultL7RateLimitWindowSeconds     = 60
+	defaultL4ConnRateLimitEnabled       = false
+	defaultL4ConnRateLimitCount         = 50
+	defaultL4ConnRateLimitWindowSeconds   = 10
+	defaultL4XDPBlocklistLogicEnabled   = true
+	defaultXDPGlobalEnabled             = true
 )
 
 var (
