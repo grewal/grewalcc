@@ -97,7 +97,8 @@ func main() {
 	consulConfig.Address = cfg.ConsulAddr
 	consulClient, err := consulapi.NewClient(consulConfig)
 	if err != nil {
-		logger.Error("Fatal: failed to create Consul client", "error", err); os.Exit(1)
+		logger.Error("Fatal: failed to create Consul client", "error", err)
+		os.Exit(1)
 	}
 
 	var rdb *redis.Client
@@ -107,7 +108,8 @@ func main() {
 		ctxPing, cancelPing := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelPing()
 		if err := rdb.Ping(ctxPing).Err(); err != nil {
-			logger.Error("Fatal: failed to connect to Redis", "error", err); os.Exit(1)
+			logger.Error("Fatal: failed to connect to Redis", "error", err)
+			os.Exit(1)
 		}
 		logger.Info("Successfully connected to Redis", "address", cfg.RedisAddr)
 	}
@@ -150,9 +152,16 @@ func main() {
 	}()
 
 	grpcListener, err := net.Listen("tcp", cfg.GRPCListenAddr)
-	if err != nil { logger.Error("Failed to listen for gRPC", "error", err); os.Exit(1) }
+	if err != nil {
+		logger.Error("Failed to listen for gRPC", "error", err)
+		os.Exit(1)
+	}
 	grpcServer := grpc.NewServer()
-	pb.RegisterAuthorizationServer(grpcServer, httpAuthzHandler)
+
+	// Create the dedicated L4 NetworkAuthzServer...
+	networkAuthzHandler := authz.NewNetworkAuthzServer(authzService, logger)
+	// register IT with the gRPC server.
+	pb.RegisterAuthorizationServer(grpcServer, networkAuthzHandler)
 
 	grpcServerErrChan := make(chan error, 1)
 	go func() {
@@ -166,20 +175,43 @@ func main() {
 	logger.Info("All servers running. Waiting for shutdown signal or server error...")
 
 	select {
-	case err := <-httpServerErrChan: if err != nil { logger.Error("HTTP Server failed", "error", err) }; appCancel(); grpcServer.GracefulStop()
-	case err := <-grpcServerErrChan: if err != nil { logger.Error("gRPC Server failed", "error", err) }; appCancel(); _ = httpServer.Shutdown(context.Background())
-	case sig := <-shutdownSignalChan: logger.Info("Shutdown signal received", "signal", sig.String()); appCancel(); grpcServer.GracefulStop(); shutdownCtxHttp, httpShutdownCancel := context.WithTimeout(context.Background(), 10*time.Second); defer httpShutdownCancel(); _ = httpServer.Shutdown(shutdownCtxHttp)
+	case err := <-httpServerErrChan:
+		if err != nil {
+			logger.Error("HTTP Server failed", "error", err)
+		}
+		appCancel()
+		grpcServer.GracefulStop()
+	case err := <-grpcServerErrChan:
+		if err != nil {
+			logger.Error("gRPC Server failed", "error", err)
+		}
+		appCancel()
+		_ = httpServer.Shutdown(context.Background())
+	case sig := <-shutdownSignalChan:
+		logger.Info("Shutdown signal received", "signal", sig.String())
+		appCancel()
+		grpcServer.GracefulStop()
+		shutdownCtxHttp, httpShutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer httpShutdownCancel()
+		_ = httpServer.Shutdown(shutdownCtxHttp)
 	}
 
 	close(pollerQuitSignal)
 	pollerDoneChan := make(chan struct{})
-	go func() { wg.Wait(); close(pollerDoneChan) }()
+	go func() {
+		wg.Wait()
+		close(pollerDoneChan)
+	}()
 	select {
-	case <-pollerDoneChan: logger.Info("Consul KV Poller completed.")
-	case <-time.After(10 * time.Second): logger.Warn("Timeout waiting for Consul KV Poller.")
+	case <-pollerDoneChan:
+		logger.Info("Consul KV Poller completed.")
+	case <-time.After(10 * time.Second):
+		logger.Warn("Timeout waiting for Consul KV Poller.")
 	}
 
-	if rdb != nil { _ = rdb.Close() }
+	if rdb != nil {
+		_ = rdb.Close()
+	}
 
 	if xdpController != nil {
 		if realController, ok := xdpController.(*ebpfctrl.XDPController); ok {
