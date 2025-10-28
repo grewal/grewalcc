@@ -31,7 +31,7 @@
     - authz-service-http
     - authz-service-grpc
   become: yes
-  notify: Reload Consul Configuration
+  notify: Restart consul service
   tags:
     - authorization_service
 
