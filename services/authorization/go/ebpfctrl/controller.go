@@ -1,3 +1,4 @@
+// FILE: services/authorization/go/ebpfctrl/controller.go
 package ebpfctrl
 
 import (
@@ -9,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-//	"github.com/cilium/ebpf"
+	//	"github.comcom/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
 )
@@ -192,6 +193,10 @@ func ipStringToNBOUint32(ipStr string) (uint32, error) {
 	if ipv4 == nil {
 		return 0, fmt.Errorf("not an IPv4 address: %s", ipStr)
 	}
-	return binary.BigEndian.Uint32(ipv4), nil
-}
 
+	// To4() returns network byte order (big-endian) bytes.
+	// On our little-endian host, we must interpret these bytes as little-endian
+	// to produce a uint32 whose in-memory representation matches the network byte order
+	// expected by the eBPF map. This compiles to a single, efficient BSWAP instruction.
+	return binary.LittleEndian.Uint32(ipv4), nil
+}

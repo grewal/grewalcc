@@ -15,6 +15,7 @@ ExecStartPre=-/usr/bin/docker pull {{ envoy_image_repository }}:{{ envoy_image_t
 
 ExecStart=/usr/bin/docker run --rm --name envoy-svc \
   --network {{ docker_network_name }} \
+  --add-host=host.docker.internal:host-gateway \
   -p 80:80 \
   -p 443:443 \
   -p {{ envoy_admin_port }}:{{ envoy_admin_port }} \

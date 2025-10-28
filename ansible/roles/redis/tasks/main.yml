@@ -1,3 +1,4 @@
+# FILE: roles/redis/tasks/main.yml
 ---
 # tasks file for redis role
 
@@ -38,7 +39,7 @@
       - "yes"
       - "--requirepass"
       - "{{ redis_password }}"
-      
+
     ports:
       - "127.0.0.1:{{ redis_port | default(6379) }}:{{ redis_port | default(6379) }}"
 
@@ -64,8 +65,8 @@
   ansible.builtin.template:
     src: redis-service.hcl.j2
     dest: "/etc/consul.d/redis-service.hcl"
-    owner: consul
-    group: consul
+    owner: root
+    group: root
     mode: '0644'
   become: yes
-  notify: Reload Consul Configuration
+  notify: Restart consul service

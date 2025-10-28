@@ -1,3 +1,4 @@
+# FILE: roles/consul/tasks/main.yml
 ---
 # ansible/roles/consul/tasks/main.yml
 
@@ -20,8 +21,8 @@
   ansible.builtin.file:
     path: /opt/consul/data
     state: directory
-    owner: '100'
-    group: '1000'
+    owner: 'root'
+    group: 'root'
     mode: '0750'
   become: yes
 
