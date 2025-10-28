@@ -88,7 +88,7 @@ static_resources:
                       "@type": |-
                         type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
                       transport_api_version: V3
-                      failure_mode_allow: true
+                      failure_mode_allow: false
                       with_request_body:
                         max_request_bytes: 8192
                         allow_partial_message: true
@@ -215,7 +215,7 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: "authz-service.service.consul"
+                      address: "host.docker.internal"
                       port_value: {{authz_service_listen_port | default(9001)}}
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
