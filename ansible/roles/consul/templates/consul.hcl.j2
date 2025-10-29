@@ -9,15 +9,6 @@ bootstrap_expect = 1
 
 enable_local_script_checks = true
 
-# --- Increase Rate Limits (Temporary Diagnostic) ---
-limits {
-  http_max_conns_per_client = 400 # Default 200
-  rpc_rate = 400                  # Default 200
-  rpc_max_burst = 800             # Default 400
-}
-# ----------------------------------------------------
-
-
 # Host networking configuration - use the internal IP variable
 bind_addr = "{{ consul_host_ip }}"
 advertise_addr = "{{ consul_host_ip }}"
@@ -39,7 +30,7 @@ log_level = "INFO"
 # enable_syslog = true
 
 # Enable Prometheus Metrics Endpoint
-telemetry {
-  prometheus_retention_time = "24h"  # Required positive value to enable endpoint
-  disable_hostname = true            # Recommended when using Prometheus
-}
+#telemetry {
+#  prometheus_retention_time = "24h"  # Required positive value to enable endpoint
+#  disable_hostname = true            # Recommended when using Prometheus
+#}
