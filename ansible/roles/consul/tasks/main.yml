@@ -17,12 +17,12 @@
     mode: '0755'
   become: yes
 
-- name: Ensure Consul host data directory exists
+- name: Ensure Consul host data directory exists with correct permissions
   ansible.builtin.file:
     path: /opt/consul/data
     state: directory
-    owner: 'root'
-    group: 'root'
+    owner: '100'   # UID of the 'consul' user inside the container
+    group: '1000'  # GID of the 'consul' user inside the container
     mode: '0750'
   become: yes
 

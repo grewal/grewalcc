@@ -60,7 +60,7 @@
   handlers:
     - name: Reload Consul Configuration
       listen: "Reload Consul Configuration"
-      ansible.builtin.command: "consul reload -http-addr={{ consul_host_ip }}:8500"
+      ansible.builtin.command: "docker exec consul consul reload"
       changed_when: true
       become: yes
 
@@ -85,7 +85,7 @@
         state: restarted
       become: yes
 
-    # handlers for GCE throttling to 50% for its mandatory cert creation service
+    # NEW HANDLERS FOR GCE THROTTLING
     - name: Reload systemd daemon
       ansible.builtin.systemd:
         daemon_reload: yes
