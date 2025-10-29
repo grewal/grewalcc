@@ -13,7 +13,7 @@ service {
     name     = "Next.js TCP Port Check"
     # The health check targets the unique port published to the host's loopback interface.
     tcp      = "127.0.0.1:{{ grewal_cc_web_host_health_check_port }}"
-    interval = "15s"
+    interval = "180s"
     timeout  = "3s"
   }
 }
