@@ -14,6 +14,28 @@
         driver: bridge
       tags: [always]
 
+  tasks:
+    - name: Ensure GCE workload cert refresh override directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/system/gce-workload-cert-refresh.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      tags: [always]
+
+    - name: Throttle GCE workload certificate refresh service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/gce-workload-cert-refresh.service.d/override.conf
+        content: "{{ gce_cert_refresh_override_content }}"
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - Reload systemd daemon
+        - Restart gce-workload-cert-refresh timer
+      tags: [always]
+
   roles:
     # NOTE: Monitoring stack is paused to conserve resources on e2-micro
     #- node_exporter
@@ -30,7 +52,7 @@
     - role: grewalcc
       tags: ['grewalcc']
     - role: grewal_cc_web
-      tags: ['grewal_cc_web'] 
+      tags: ['grewal_cc_web']
       #- redis_exporter
     - role: envoy
       tags: ['envoy']
@@ -38,14 +60,8 @@
   handlers:
     - name: Reload Consul Configuration
       listen: "Reload Consul Configuration"
-      ansible.builtin.command: "consul reload -http-addr={{ consul_host_ip }}:8500"
+      ansible.builtin.command: "docker exec consul consul reload"
       changed_when: true
-      become: yes
-
-    - name: Reload systemd daemon
-      listen: "Reload systemd daemon"
-      ansible.builtin.systemd:
-        daemon_reload: yes
       become: yes
 
     - name: Restart consul service
@@ -66,5 +82,17 @@
       listen: "Restart envoy service"
       ansible.builtin.systemd:
         name: envoy.service
+        state: restarted
+      become: yes
+
+    # NEW HANDLERS FOR GCE THROTTLING
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      become: yes
+
+    - name: Restart gce-workload-cert-refresh timer
+      ansible.builtin.systemd:
+        name: gce-workload-cert-refresh.timer
         state: restarted
       become: yes
