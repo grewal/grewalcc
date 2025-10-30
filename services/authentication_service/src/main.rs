@@ -1,3 +1,4 @@
+// src/main.rs
 use axum::{
     extract::State,
     routing::{get, post},
@@ -6,8 +7,10 @@ use axum::{
 };
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
-use tracing::{error, info, Level, debug};
+use tracing::{error, info, Level, debug, instrument};
 use tracing_subscriber::{FmtSubscriber, EnvFilter};
+use std::fs;
+use std::path::Path;
 
 mod config;
 mod db;
@@ -61,8 +64,18 @@ async fn main() -> Result<(), AppError> {
     };
     info!(version = env!("CARGO_PKG_VERSION"), "Application configuration loaded successfully.");
 
-    info!("Connecting to Redis...");
+    info!("Connecting to Redis and performing health checks...");
     let redis_client = crate::db::create_redis_client(&app_config.redis_config).await?;
+
+    if let Err(e) = load_redis_scripts(&redis_client).await {
+        error!("Failed to load Redis scripts: {:?}", e);
+        return Err(e);
+    }
+    if let Err(e) = verify_redis_health(&redis_client).await {
+        error!("Redis health check failed: {:?}", e);
+        return Err(e);
+    }
+    info!("Redis connection verified and functions loaded successfully.");
 
     let cloned_jwt_config: config::JwtConfig = app_config.jwt_config.clone();
     let jwt_config_arc_for_service: Arc<config::JwtConfig> = Arc::new(cloned_jwt_config);
@@ -75,17 +88,14 @@ async fn main() -> Result<(), AppError> {
         token_service: Arc::clone(&token_service),
     });
 
-    // Define protected routes that need AppState for the middleware
     let protected_routes = Router::new()
         .route("/me", get(get_current_user_handler))
         .route_layer(axum_middleware::from_fn_with_state(Arc::clone(&app_state), app_auth_middleware));
 
-    // Define public routes
     let public_routes = Router::new()
         .route("/register", post(register_user_handler))
         .route("/login", post(login_user_handler));
 
-    // Combine routers
     let app = Router::new()
         .route("/health", get(health_check_handler))
         .nest("/auth", public_routes.merge(protected_routes))
@@ -127,6 +137,83 @@ async fn main() -> Result<(), AppError> {
         )));
     }
 
+    Ok(())
+}
+
+/// Load Redis Lua scripts as Redis Functions
+#[instrument(skip(client), name = "load_redis_scripts")]
+async fn load_redis_scripts(client: &redis::Client) -> Result<(), AppError> {
+    let script_path = Path::new("./redis-scripts/register_user.lua");
+    let script_content = fs::read_to_string(script_path).map_err(|e| {
+        AppError::InternalServerError(format!(
+            "Failed to read Redis script file {:?}: {}",
+            script_path, e
+        ))
+    })?;
+
+    let mut conn = client.get_multiplexed_async_connection().await?;
+
+    // THE FINAL VERSION: This is the clean, correct way to register a function
+    // when the Lua script is already written for the Functions API.
+    let function_library = format!(
+        "#!lua name=grewal_auth_lib\nredis.register_function('register_user', function(keys, args) {} end)",
+        script_content
+    );
+
+    let _result: String = redis::cmd("FUNCTION")
+        .arg("LOAD")
+        .arg("REPLACE")
+        .arg(&function_library)
+        .query_async(&mut conn)
+        .await?;
+
+    info!("Successfully loaded 'register_user' function into Redis.");
+    Ok(())
+}
+
+/// Verify Redis is healthy and our functions are loaded
+#[instrument(skip(client), name = "verify_redis_health")]
+async fn verify_redis_health(client: &redis::Client) -> Result<(), AppError> {
+    let mut conn = client.get_multiplexed_async_connection().await?;
+
+    let ping_result: String = redis::cmd("PING").query_async(&mut conn).await?;
+    if ping_result != "PONG" {
+        return Err(AppError::DatabaseConnectionFailed("Redis PING command failed".to_string()));
+    }
+    info!("Redis PING successful.");
+
+    let list_result: redis::Value = redis::cmd("FUNCTION")
+        .arg("LIST")
+        .query_async(&mut conn)
+        .await?;
+    
+    if let redis::Value::Array(libraries) = list_result {
+        let found = libraries.iter().any(|lib| {
+            if let redis::Value::Array(items) = lib {
+                items.windows(2).any(|pair| {
+                    matches!(
+                        (&pair[0], &pair[1]),
+                        (
+                            redis::Value::BulkString(key),
+                            redis::Value::BulkString(val)
+                        ) if key.as_slice() == b"library_name" && val.as_slice() == b"grewal_auth_lib"
+                    )
+                })
+            } else { 
+                false 
+            }
+        });
+
+        if !found {
+            return Err(AppError::InternalServerError(
+                "Required Redis function library 'grewal_auth_lib' not found.".to_string(),
+            ));
+        }
+    } else {
+        return Err(AppError::InternalServerError("Unexpected result from FUNCTION LIST".to_string()));
+    }
+
+    info!("Redis function library 'grewal_auth_lib' confirmed to be loaded.");
     Ok(())
 }
 
