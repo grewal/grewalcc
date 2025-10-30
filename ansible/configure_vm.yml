@@ -36,6 +36,30 @@
         - Restart gce-workload-cert-refresh timer
       tags: [always]
 
+    - name: Apply Redis Host Optimizations
+      block:
+        - name: Set vm.overcommit_memory for Redis
+          ansible.builtin.copy:
+            src: 99-grewalcc-redis-kernel-custom.conf
+            dest: /etc/sysctl.d/99-grewalcc-redis-kernel-custom.conf
+            owner: root
+            group: root
+            mode: '0644'
+          notify: Apply sysctl
+
+        - name: Disable Transparent Huge Pages (THP) for Redis
+          ansible.builtin.lineinfile:
+            path: /etc/rc.local
+            regexp: '^echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+            line: 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+            create: yes
+            owner: root
+            group: root
+            mode: '0755'
+          notify: Apply THP now
+
+      tags: [always]
+
   roles:
     # NOTE: Monitoring stack is paused to conserve resources on e2-micro
     #- node_exporter
@@ -58,6 +82,14 @@
       tags: ['envoy']
 
   handlers:
+    - name: Apply sysctl
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/99-grewalcc-redis-kernel-custom.conf
+      become: yes
+
+    - name: Apply THP now
+      ansible.builtin.command: echo never > /sys/kernel/mm/transparent_hugepage/enabled
+      become: yes
+
     - name: Reload Consul Configuration
       listen: "Reload Consul Configuration"
       ansible.builtin.command: "docker exec consul consul reload"
@@ -85,7 +117,7 @@
         state: restarted
       become: yes
 
-    # NEW HANDLERS FOR GCE THROTTLING
+    # Handler for GCE throttling
     - name: Reload systemd daemon
       ansible.builtin.systemd:
         daemon_reload: yes
