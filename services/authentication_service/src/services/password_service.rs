@@ -1,3 +1,4 @@
+// src/services/password_service.rs
 use crate::errors::AppError;
 use argon2::{
     password_hash::{
@@ -43,53 +44,46 @@ pub async fn hash_password(password: SecretString) -> Result<String, AppError> {
     Ok(hashed_password_string)
 }
 
+// CORRECTED VERSION
 pub async fn verify_password(password_hash_str: &str, password_to_verify: SecretString) -> Result<bool, AppError> {
     debug!("Attempting to verify password.");
 
     let owned_password_hash_str = password_hash_str.to_string();
 
-    let verification_succeeded = tokio::task::spawn_blocking(move || {
+    // The logic is now moved entirely inside the blocking task for clarity.
+    let verification_result = tokio::task::spawn_blocking(move || {
         let parsed_hash = match PasswordHash::new(&owned_password_hash_str) {
             Ok(h) => h,
             Err(e) => {
-                warn!("Failed to parse stored password hash (potential tampering or corruption) inside spawn_blocking: {:?}", e);
-                return Ok(false);
+                // This is a server-side issue (bad hash in DB), not a password mismatch.
+                error!("Failed to parse stored password hash: {:?}", e);
+                return Err(AppError::InternalServerError("Stored password hash is invalid.".to_string()));
             }
         };
 
-        match Argon2::default()
-            .verify_password(password_to_verify.expose_secret().as_bytes(), &parsed_hash)
-        {
-            Ok(_) => Ok(true),
-            Err(argon2::password_hash::Error::Password) => Ok(false),
+        match Argon2::default().verify_password(password_to_verify.expose_secret().as_bytes(), &parsed_hash) {
+            Ok(_) => {
+                info!("Password verification successful.");
+                Ok(true) // Password is correct
+            }
+            Err(argon2::password_hash::Error::Password) => {
+                warn!("Password verification failed: Incorrect password.");
+                Ok(false) // Password is NOT correct
+            }
             Err(e) => {
-                error!("Password verification (argon2.verify_password) failed with an unexpected error: {:?}", e);
-                Err(e) // Propagate the argon2::password_hash::Error
+                error!("Password verification failed with an unexpected error: {:?}", e);
+                Err(AppError::InternalServerError("Password verification process failed.".to_string()))
             }
         }
     })
     .await
-    .map_err(|e| { // Handles JoinError
-        error!("Password verification task panicked or was cancelled: {:?}", e);
+    .map_err(|e| { // Handles JoinError if the task panics
+        error!("Password verification task panicked: {:?}", e);
         AppError::InternalServerError("Password verification process failed unexpectedly.".to_string())
-    })?; // This ? is for JoinError
+    })?; // This ? unwraps the JoinResult
 
-    match verification_succeeded {
-        Ok(_) => {
-            info!("Password verification successful.");
-            Ok(true)
-        }
-        Err(argon2::password_hash::Error::Password) => {
-            warn!("Password verification failed: Incorrect password.");
-            Ok(false)
-        }
-        Err(e) => {
-            error!("Password verification process failed with an argon2::password_hash::Error: {:?}", e);
-            Err(AppError::InternalServerError(
-                "Password verification process encountered an unexpected issue.".to_string(),
-            ))
-        }
-    }
+    // The final ? unwraps the inner Result<bool, AppError>
+    verification_result
 }
 
 #[cfg(test)]
@@ -115,20 +109,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_verify_password_failure_malformed_hash_handled_in_spawn_blocking() {
+    async fn test_verify_password_failure_malformed_hash() {
         let password = SecretString::new("SomePassword123!".to_string());
         let malformed_hash = "this-is-not-a-valid-argon2-hash-string";
-        
-        let verification_result = verify_password(malformed_hash, password).await.unwrap();
-        assert!(!verification_result, "Verification should fail for a malformed hash that is handled inside spawn_blocking");
-    }
 
-    #[tokio::test]
-    async fn test_verify_password_with_unparseable_hash_string_outside_spawn() {
-        let password = SecretString::new("TestPassword".to_string());
-        let unparseable_hash = "$argon2id$v=19$m=19456,t=2,p=1$corruptedsalt$corruptedhash";
-
-        let result = verify_password(unparseable_hash, password).await.unwrap();
-        assert!(!result, "Verification should fail for unparseable hash and result in Ok(false)");
+        let verification_result = verify_password(malformed_hash, password).await;
+        assert!(verification_result.is_err()); // Should return an AppError, not Ok(false)
+        if let Err(AppError::InternalServerError(msg)) = verification_result {
+            assert!(msg.contains("Stored password hash is invalid."));
+        } else {
+            panic!("Expected an InternalServerError for a malformed hash.");
+        }
     }
 }
