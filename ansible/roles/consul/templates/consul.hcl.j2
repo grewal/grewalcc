@@ -1,4 +1,3 @@
-# templates/consul.hcl.j2
 # Deployed by Ansible
 
 data_dir = "/consul/data"
@@ -7,30 +6,30 @@ data_dir = "/consul/data"
 server = true
 bootstrap_expect = 1
 
-enable_local_script_checks = true
+# Disable script checks as we use network-based checks for our services
+enable_local_script_checks = false
+
+# Disable the UI to reduce memory and CPU footprint
+ui_config {
+  enabled = false
+}
+
+# Set log level to INFO for production
+log_level = "ERROR"
 
 # Host networking configuration - use the internal IP variable
 bind_addr = "{{ consul_host_ip }}"
 advertise_addr = "{{ consul_host_ip }}"
 client_addr = "127.0.0.1"
 
-# Enable UI
-ui_config {
+# PIVOT: Enable Consul Connect and gRPC xDS Server via localhost TCP
+connect {
   enabled = true
 }
 
-# Enable DNS Interface on standard port 8600 (UDP/TCP)
+# Enable DNS Interface and gRPC xDS over a localhost TCP port
 ports {
   dns = 8600
+  grpc = 8502      # Use standard gRPC port on localhost
+  grpc_tls = -1    # Disable TLS gRPC port
 }
-
-# Note: HTTP API defaults to 8500
-
-log_level = "INFO"
-# enable_syslog = true
-
-# Enable Prometheus Metrics Endpoint
-#telemetry {
-#  prometheus_retention_time = "24h"  # Required positive value to enable endpoint
-#  disable_hostname = true            # Recommended when using Prometheus
-#}
