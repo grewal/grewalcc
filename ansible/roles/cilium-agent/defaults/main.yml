@@ -1,0 +1,9 @@
+# ansible/roles/cilium-agent/defaults/main.yml
+---
+# The version of the Cilium Agent to install.
+# Using a version known for better standalone compatibility.
+cilium_agent_version: "1.16.3"
+
+# Feature flags for Cilium configuration
+cilium_hubble_enabled: true
+cilium_debug_enabled: true
