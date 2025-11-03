@@ -1,3 +1,4 @@
+# templates/consul.service.j2
 [Unit]
 Description=Consul Service Discovery Agent (Docker Container)
 Requires=docker.service network-online.target
@@ -12,9 +13,6 @@ ExecStartPre=-/usr/bin/docker stop consul
 ExecStartPre=-/usr/bin/docker rm consul
 
 # Run the Consul server container
-# Mount the config directory /etc/consul.d read-only.
-# Mount the host data directory /opt/consul/data read-write.
-# Use the config DIRECTORY argument.
 ExecStart=/usr/bin/docker run --rm --network host --name consul \
   -v /etc/consul.d:/etc/consul.d:ro \
   -v /opt/consul/data:/consul/data \
