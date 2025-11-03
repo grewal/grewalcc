@@ -1,0 +1,34 @@
+[Unit]
+Description=Cilium Agent
+Documentation=https://docs.cilium.io/
+After=network.target docker.service consul.service
+Requires=docker.service consul.service
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c 'modprobe -a sch_ingress cls_bpf'
+ExecStart=/usr/local/bin/cilium-agent \
+  --identity-allocation-mode=kvstore \
+  --kvstore=consul \
+  --kvstore-opt=consul.address=127.0.0.1:8500 \
+  --enable-hubble=false \
+  --prometheus-serve-addr=:9962 \
+  --enable-endpoint-routes=true \
+  --enable-ipv4=true \
+  --enable-ipv6=false \
+  --routing-mode=native \
+  --ipam=cluster-pool \
+  --ipv4-native-routing-cidr=10.128.0.0/16 \
+  --enable-ipv4-masquerade=true \
+  --enable-ip-masq-agent=false \
+  --enable-k8s=false \
+  --enable-k8s-api-discovery=false \
+  --debug={{ 'true' if cilium_debug_enabled else 'false' }}
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

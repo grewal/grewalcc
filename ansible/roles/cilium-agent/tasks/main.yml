@@ -1,0 +1,106 @@
+# ansible/roles/cilium-agent/tasks/main.yml
+---
+- name: "Cilium-Agent | Ensure OS dependencies are installed"
+  ansible.builtin.apt:
+    name:
+      - ipset
+      - clang
+      - llvm
+    state: present
+    update_cache: yes
+  become: true
+
+- name: "Cilium-Agent | Create Cilium directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - /opt/cilium
+    - /etc/cilium
+    - /var/run/cilium
+    - /var/lib/cilium
+    - /var/lib/cilium/bpf
+  become: true
+
+- name: "Cilium-Agent | Unarchive pre-built BPF artifacts"
+  ansible.builtin.unarchive:
+    src: bpf-artifacts.tar.gz
+    dest: /var/lib/cilium/bpf/
+    owner: root
+    group: root
+  become: true
+  notify: Restart cilium
+
+- name: "Cilium-Agent | Download Cilium container image for binaries"
+  community.docker.docker_image:
+    name: "quay.io/cilium/cilium:v{{ cilium_agent_version }}"
+    source: pull
+  become: true
+
+- name: "Cilium-Agent | Create an extractor container"
+  ansible.builtin.command: "docker create --name cilium-extractor quay.io/cilium/cilium:v{{ cilium_agent_version }}"
+  register: extractor_create_result
+  changed_when: extractor_create_result.rc == 0
+  become: true
+
+- name: "Cilium-Agent | Copy binaries from extractor container"
+  ansible.builtin.command: "docker cp cilium-extractor:/usr/bin/{{ item }} /usr/local/bin/"
+  loop:
+    - cilium-agent
+    - cilium-dbg
+    - cilium-health
+    - cilium-health-responder
+    - cilium-envoy
+  changed_when: true
+  become: true
+
+- name: "Cilium-Agent | Ensure binaries are executable"
+  ansible.builtin.file:
+    path: "/usr/local/bin/{{ item }}"
+    mode: '0755'
+  loop:
+    - cilium-agent
+    - cilium-dbg
+    - cilium-health
+    - cilium-health-responder
+    - cilium-envoy
+  become: true
+
+- name: "Cilium-Agent | Remove the extractor container"
+  ansible.builtin.command: "docker rm cilium-extractor"
+  changed_when: true
+  become: true
+
+- name: "Cilium-Agent | Create Cilium systemd service from template"
+  ansible.builtin.template:
+    src: cilium.service.j2
+    dest: /etc/systemd/system/cilium.service
+    mode: '0644'
+  become: true
+  notify: Restart cilium
+
+- name: "Cilium-Agent | Ensure Cilium service is enabled and started"
+  ansible.builtin.systemd:
+    name: cilium
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: true
+
+- name: "Cilium-Agent | Wait up to 10 minutes for Cilium agent to be ready"
+  ansible.builtin.command: /usr/local/bin/cilium-dbg status
+  register: cilium_status
+  retries: 120
+  delay: 5
+  until: cilium_status.rc == 0
+  become: true
+  changed_when: false
+  failed_when: cilium_status.rc != 0
+
+- name: "Cilium-Agent | Display final Cilium status"
+  ansible.builtin.debug:
+    var: cilium_status.stdout_lines
+  when: cilium_status.rc == 0

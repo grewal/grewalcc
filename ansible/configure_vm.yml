@@ -67,6 +67,8 @@
     # - grafana
     - role: consul
       tags: ['consul']
+    - role: cilium-agent
+      tags: ['cilium-agent']
     - role: redis
       tags: ['redis']
     - role: authorization_service
@@ -115,6 +117,13 @@
       ansible.builtin.systemd:
         name: envoy.service
         state: restarted
+      become: yes
+
+    - name: Restart cilium
+      ansible.builtin.systemd:
+        name: cilium
+        state: restarted
+        daemon_reload: yes
       become: yes
 
     # Handler for GCE throttling
