@@ -1,0 +1,111 @@
+# This manifest represents the full desired state for the Envoy proxy,
+# translated from the production envoy.yaml configuration.
+listeners:
+  - name: listener_https_main
+    address: "0.0.0.0"
+    port: 443
+    # Our translator doesn't handle TLS or advanced filters yet, but the schema supports them.
+    # We will uncomment these sections as we build out the translator logic.
+    # tls:
+    #   cert_chain_path: "/etc/letsencrypt/live/grewal.cc/fullchain.pem"
+    #   private_key_path: "/etc/letsencrypt/live/grewal.cc/privkey.pem"
+    #   alpn_protocols: ["h2", "http/1.1"]
+    filters:
+      # - type: "network.rbac"
+      #   rbac:
+      #     stat_prefix: "rbac_l3_ip_block"
+      #     policies:
+      #       - name: "static_ip_deny_list"
+      #         action: "DENY"
+      #         source_ips: ["73.92.2.75/32", "1.2.3.4/32"]
+      # - type: "network.ext_authz"
+      #   network_ext_authz:
+      #     stat_prefix: "ext_authz_network_l4"
+      #     grpc_cluster: "authz_network_grpc_cluster"
+      #     failure_mode_allow: false
+      - type: "http_connection_manager"
+        http_connection_manager:
+          stat_prefix: "ingress_https"
+          route_config_name: "grewalcc_website_routes"
+          # http_filters:
+          #   - type: "ext_authz"
+          #   - type: "grpc_web"
+          #   - type: "router"
+
+  - name: listener_http_redirect_to_https
+    address: "0.0.0.0"
+    port: 80
+    filters:
+      - type: "http_connection_manager"
+        http_connection_manager:
+          stat_prefix: "ingress_http_redirect"
+          route_config_name: "local_route_http_redirect"
+          # http_filters:
+          #   - type: "router"
+
+routes:
+  - name: grewalcc_website_routes
+    virtual_hosts:
+      - name: grewal_cc_virtual_host
+        domains: ["*"]
+        routes:
+          - match: { prefix: "/health" }
+            action: { cluster: "auth_service_cluster" }
+          - match: { prefix: "/metrics" }
+            action: { cluster: "auth_service_cluster" }
+          - match: { prefix: "/auth/" }
+            action: { cluster: "auth_service_cluster" }
+          - match: { prefix: "/grewal.HomeGeneral/" }
+            action: { cluster: "grewalcc_cluster" }
+          - match: { prefix: "/api/" }
+            action: { cluster: "nextjs-service-cluster" }
+          - match: { prefix: "/" }
+            action: { cluster: "nextjs-service-cluster" }
+
+  - name: local_route_http_redirect
+    virtual_hosts:
+      - name: vh_redirect_all_to_https
+        domains: ["*"]
+        routes:
+          - match: { prefix: "/" }
+            action:
+              redirect:
+                https_redirect: true
+
+clusters:
+  - name: grewalcc_cluster
+    connect_timeout_seconds: 5
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    dns_name: "grewalcc.service.consul"
+    port: 50051
+    is_http2: true
+
+  - name: authz_http_cluster
+    connect_timeout_seconds: 1 # 0.5s is not an int
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    dns_name: "host.docker.internal"
+    port: 9001
+
+  - name: authz_network_grpc_cluster
+    connect_timeout_seconds: 1 # 0.5s is not an int
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    dns_name: "host.docker.internal"
+    port: 9002
+    is_http2: true
+
+  - name: auth_service_cluster
+    connect_timeout_seconds: 1
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    dns_name: "auth-service"
+    port: 3000
+
+  - name: nextjs-service-cluster
+    connect_timeout_seconds: 5
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    dns_name: "grewal-cc-web"
+    port: 3000
