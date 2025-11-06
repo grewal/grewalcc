@@ -25,7 +25,6 @@ type TLS struct {
 }
 
 // Filter represents a network filter in an Envoy listener's filter chain.
-// This structure correctly models Envoy's architecture, separating different filter types.
 type Filter struct {
 	Type                  string                `yaml:"type"` // e.g., "network.rbac", "http_connection_manager"
 	RBAC                  *RBAC                 `yaml:"rbac,omitempty"`
@@ -101,8 +100,14 @@ type RouteMatch struct {
 
 // RouteAction specifies what to do when a route matches.
 type RouteAction struct {
-	Cluster        string `yaml:"cluster"`
-	TimeoutSeconds int    `yaml:"timeout_seconds,omitempty"`
+	Cluster        string    `yaml:"cluster,omitempty"`
+	TimeoutSeconds int       `yaml:"timeout_seconds,omitempty"`
+	Redirect       *Redirect `yaml:"redirect,omitempty"`
+}
+
+// Redirect defines an HTTP redirect action.
+type Redirect struct {
+	HttpsRedirect bool `yaml:"https_redirect"`
 }
 
 // Cluster defines an upstream service cluster, correctly using DNS for discovery.
@@ -110,6 +115,7 @@ type Cluster struct {
 	Name                  string `yaml:"name"`
 	ConnectTimeoutSeconds int    `yaml:"connect_timeout_seconds"`
 	Type                  string `yaml:"type"` // e.g., STRICT_DNS
+	DnsLookupFamily       string `yaml:"dns_lookup_family,omitempty"` // e.g., V4_ONLY
 	DNSName               string `yaml:"dns_name"`
 	Port                  uint32 `yaml:"port"`
 	IsHTTP2               bool   `yaml:"is_http2"`
@@ -122,5 +128,6 @@ func ParseManifest(data []byte) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Here, we can add validation logic in the future.
 	return &m, nil
 }

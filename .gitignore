@@ -184,3 +184,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /web/grewalcc-fluid-simulation/target/
+
+# Ignore generated Envoy configuration
+xds-adapter/generated-envoy.yaml
+
+# Ignore compiled Go binaries
+xds-adapter/xds-adapter
