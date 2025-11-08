@@ -14,6 +14,12 @@
         driver: bridge
       tags: [always]
 
+    - name: Ensure rsync is installed for synchronize module
+      ansible.builtin.package:
+        name: rsync
+        state: present
+      tags: [always]
+
   tasks:
     - name: Ensure GCE workload cert refresh override directory exists
       ansible.builtin.file:
@@ -61,10 +67,6 @@
       tags: [always]
 
   roles:
-    # NOTE: Monitoring stack is paused to conserve resources on e2-micro
-    #- node_exporter
-    #- prometheus
-    # - grafana
     - role: consul
       tags: ['consul']
     - role: redis
@@ -77,7 +79,8 @@
       tags: ['grewalcc']
     - role: grewal_cc_web
       tags: ['grewal_cc_web']
-      #- redis_exporter
+    - role: xds-adapter
+      tags: ['xds-adapter', 'envoy']
     - role: envoy
       tags: ['envoy']
 
@@ -117,7 +120,13 @@
         state: restarted
       become: yes
 
-    # Handler for GCE throttling
+    - name: Restart xds-adapter service
+      listen: "Restart xds-adapter service"
+      ansible.builtin.systemd:
+        name: xds-adapter.service
+        state: restarted
+      become: yes
+
     - name: Reload systemd daemon
       ansible.builtin.systemd:
         daemon_reload: yes

@@ -1,0 +1,25 @@
+[Unit]
+Description=Envoy xDS Control Plane Adapter Container
+After=docker.service
+Requires=docker.service
+
+[Service]
+User=root
+Group=root
+
+ExecStartPre=-/usr/bin/docker stop xds-adapter
+ExecStartPre=-/usr/bin/docker rm xds-adapter
+ExecStop=-/usr/bin/docker stop xds-adapter
+
+# THIS IS THE FIX: Put the container on the 'grewalnet' bridge network,
+# the same network as the Envoy container.
+ExecStart=/usr/bin/docker run --rm --name xds-adapter \
+  --network {{ docker_network_name | default('grewalnet') }} \
+  -v /opt/xds-adapter/manifest.yaml:/manifest.yaml:ro \
+  {{ xds_adapter_image }}
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

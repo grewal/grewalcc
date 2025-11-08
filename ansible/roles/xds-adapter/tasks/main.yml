@@ -1,0 +1,50 @@
+---
+- name: "XDS Adapter | Ensure configuration directory exists"
+  ansible.builtin.file:
+    path: "/opt/xds-adapter"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: "0755"
+
+- name: "XDS Adapter | Log in to Docker Hub"
+  community.docker.docker_login:
+    username: "{{ dockerhub_user }}"
+    password: "{{ dockerhub_pass }}"
+  become: no
+
+- name: "XDS Adapter | Pull the specified container image version"
+  community.docker.docker_image:
+    name: "{{ xds_adapter_image }}"
+    source: pull
+  notify: "Restart xds-adapter service"
+
+- name: "XDS Adapter | Copy the manifest configuration"
+  ansible.builtin.copy:
+    src: "{{ inventory_dir }}/../xds-adapter/manifest.yaml"
+    dest: "/opt/xds-adapter/manifest.yaml"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify: "Restart xds-adapter service"
+
+- name: "XDS Adapter | Deploy the systemd unit file"
+  ansible.builtin.template:
+    src: "xds-adapter.service.j2"
+    dest: "/etc/systemd/system/xds-adapter.service"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify: "Restart xds-adapter service"
+
+- name: "XDS Adapter | Ensure service is enabled and running"
+  ansible.builtin.systemd:
+    name: "xds-adapter"
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+#
+# THE BROKEN TASK THAT COPIED THE BOOTSTRAP FILE HAS BEEN DELETED.
+# IT IS NO LONGER THIS ROLE'S RESPONSIBILITY.
+#
