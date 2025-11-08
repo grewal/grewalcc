@@ -1,31 +1,28 @@
 # {{ ansible_managed }}
 [Unit]
-Description=Envoy Proxy Container (grewalnet Bridge Network)
-Requires=docker.service network-online.target consul.service dnsmasq.service
-After=docker.service network-online.target consul.service dnsmasq.service
+Description=Envoy Proxy Container (Managed by xDS Control Plane)
+Requires=docker.service network-online.target consul.service xds-adapter.service
+After=docker.service network-online.target consul.service xds-adapter.service
 
 [Service]
 Restart=always
 RestartSec=10s
 
-ExecStartPre=-/bin/mkdir -p /etc/envoy
 ExecStartPre=-/usr/bin/docker stop envoy-svc
 ExecStartPre=-/usr/bin/docker rm envoy-svc
 ExecStartPre=-/usr/bin/docker pull {{ envoy_image_repository }}:{{ envoy_image_tag }}
 
 ExecStart=/usr/bin/docker run --rm --name envoy-svc \
-  --network {{ docker_network_name }} \
+  --network {{ docker_network_name | default('grewalnet') }} \
   --add-host=host.docker.internal:host-gateway \
+  --cap-add=NET_BIND_SERVICE \
   -p 80:80 \
   -p 443:443 \
   -p {{ envoy_admin_port }}:{{ envoy_admin_port }} \
-  -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro \
+  -v /etc/envoy/envoy-dynamic.yaml:/etc/envoy/envoy.yaml:ro \
   -v /etc/letsencrypt:/etc/letsencrypt:ro \
   {{ envoy_image_repository }}:{{ envoy_image_tag }} \
-  -c /etc/envoy/envoy.yaml \
-  --service-node edge-envoy-instance-1 \
-  --service-cluster grewalcc_services \
-  -l info
+  -c /etc/envoy/envoy.yaml
 
 ExecStop=/usr/bin/docker stop envoy-svc
 

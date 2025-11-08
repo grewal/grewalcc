@@ -1,70 +1,35 @@
 ---
-# tasks file for envoy role
+# tasks file for the envoy role
 
-# 1. Lint the template file locally before attempting deployment
-- name: Lint Envoy YAML template before deployment
-  ansible.builtin.command:
-    cmd: "yamllint {{role_path}}/templates/envoy.yaml.j2"
-  delegate_to: localhost
-  become: no
-  changed_when: false
-  check_mode: false
-  tags:
-    - lint
-
-# 2. Deploy Envoy systemd unit file
-- name: Deploy Envoy systemd unit file
-  ansible.builtin.template:
-    src: envoy.service.j2
-    dest: /etc/systemd/system/envoy.service
-    owner: root
-    group: root
-    mode: '0644'
-  become: yes
-  notify:
-    - Reload systemd daemon
-    - Restart envoy service
-
-# 3. Ensure Envoy config directory exists
-- name: Ensure Envoy config directory exists
+- name: "Envoy | Ensure config directory exists"
   ansible.builtin.file:
     path: /etc/envoy
     state: directory
     mode: '0755'
   become: yes
 
-# 4. Deploy Envoy configuration file (envoy.yaml)
-- name: Deploy Envoy configuration file (envoy.yaml)
+- name: "Envoy | Deploy the dynamic Envoy bootstrap config"
   ansible.builtin.template:
-    src: envoy.yaml.j2
-    dest: /etc/envoy/envoy.yaml
-    owner: root
-    group: root
+    src: "envoy-bootstrap-dynamic.yaml"
+    dest: "/etc/envoy/envoy-dynamic.yaml"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify: "Restart envoy service"
+
+- name: "Envoy | Deploy Envoy systemd unit file"
+  ansible.builtin.template:
+    src: "envoy.service.j2"
+    dest: "/etc/systemd/system/envoy.service"
+    owner: "root"
+    group: "root"
     mode: '0644'
   become: yes
-  notify: Restart envoy service
+  notify: "Restart envoy service"
 
-# 5. Validate Envoy configuration using target Envoy image (AFTER deployment)
-- name: Validate Envoy configuration using target Envoy image
-  ansible.builtin.command:
-    cmd: >-
-      docker run --rm --network {{ docker_network_name }}
-      -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
-      -v /etc/letsencrypt:/etc/letsencrypt:ro
-      {{ envoy_image_repository }}:{{ envoy_image_tag }}
-      --mode validate -c /etc/envoy/envoy.yaml
-  become: yes
-  register: envoy_validate_result
-  changed_when: false
-  failed_when: envoy_validate_result.rc != 0
-  when: ansible_check_mode is not defined or not ansible_check_mode
-  tags:
-    - envoy_validate
-
-# 6. Ensure Envoy service is started and enabled
-- name: Ensure Envoy service is started and enabled
+- name: "Envoy | Ensure Envoy service is started and enabled"
   ansible.builtin.systemd:
-    name: envoy.service
+    name: "envoy.service"
     state: started
     enabled: yes
   become: yes
