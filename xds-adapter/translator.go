@@ -13,35 +13,39 @@ import (
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
-	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
-// (generateSnapshot, makeClusters, makeRoutes are unchanged)
+// generateSnapshot translates a manifest into a full xDS snapshot.
+func generateSnapshot(manifest *Manifest) (*cachev3.Snapshot, error) {
+	version := fmt.Sprintf("v%d", time.Now().Unix())
 
-func generateSnapshot(manifest *Manifest) (cachev3.Snapshot, error) {
-	const version = "1"
 	clusters := makeClusters(manifest.Clusters)
 	routes := makeRoutes(manifest.Routes)
-	listeners, err := makeListeners(manifest.Listeners, routes)
+	listeners, err := makeListeners(manifest.Listeners)
 	if err != nil {
-		return cachev3.Snapshot{}, fmt.Errorf("failed to create listeners: %w", err)
+		return nil, fmt.Errorf("failed to create listeners: %w", err)
 	}
-	snapshot, err := cachev3.NewSnapshot(
-		version,
-		map[resource.Type][]types.Resource{
-			resource.ClusterType:  clusters,
-			resource.RouteType:    routes,
-			resource.ListenerType: listeners,
-		},
-	)
+
+	// Create the resource map with all required resource types
+	resourceMap := map[resource.Type][]types.Resource{
+		resource.ClusterType:  clusters,
+		resource.RouteType:    routes,
+		resource.ListenerType: listeners,
+		resource.EndpointType: {}, // Empty but required for consistency
+	}
+
+	snapshot, err := cachev3.NewSnapshot(version, resourceMap)
 	if err != nil {
-		return cachev3.Snapshot{}, fmt.Errorf("failed to create snapshot: %w", err)
+		return nil, fmt.Errorf("failed to create snapshot: %w", err)
 	}
-	return *snapshot, nil
+
+	return snapshot, nil
 }
+
 func makeClusters(manifestClusters []Cluster) []types.Resource {
 	resources := make([]types.Resource, len(manifestClusters))
 	for i, mCluster := range manifestClusters {
@@ -86,6 +90,7 @@ func makeClusters(manifestClusters []Cluster) []types.Resource {
 	}
 	return resources
 }
+
 func makeRoutes(manifestRoutes []RouteConfig) []types.Resource {
 	resources := make([]types.Resource, len(manifestRoutes))
 	for i, mRouteConfig := range manifestRoutes {
@@ -132,15 +137,13 @@ func makeRoutes(manifestRoutes []RouteConfig) []types.Resource {
 	return resources
 }
 
-// UPDATED: Now correctly builds the router filter with its typed config.
-func makeHTTPConnectionManager(mHcm *HTTPConnectionManager, routeConfigs []types.Resource) (*hcm.HttpConnectionManager, error) {
-	// Create the router filter config. For default behavior, it's an empty object.
+// makeHTTPConnectionManager creates an HCM that references routes via RDS
+func makeHTTPConnectionManager(mHcm *HTTPConnectionManager) (*hcm.HttpConnectionManager, error) {
 	routerConfigProto, err := anypb.New(&router.Router{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal router config: %w", err)
 	}
-
-	// Create the full HttpFilter object, including the name and the typed config.
+	
 	routerFilter := &hcm.HttpFilter{
 		Name: wellknown.Router,
 		ConfigType: &hcm.HttpFilter_TypedConfig{
@@ -148,42 +151,38 @@ func makeHTTPConnectionManager(mHcm *HTTPConnectionManager, routeConfigs []types
 		},
 	}
 
-	var matchedRouteConfig *route.RouteConfiguration
-	for _, rcResource := range routeConfigs {
-		rc, ok := rcResource.(*route.RouteConfiguration)
-		if !ok {
-			continue
-		}
-		if rc.Name == mHcm.RouteConfigName {
-			matchedRouteConfig = rc
-			break
-		}
-	}
-	if matchedRouteConfig == nil {
-		return nil, fmt.Errorf("route_config_name '%s' not found", mHcm.RouteConfigName)
-	}
-
+	// KEY CHANGE: Use Rds (Route Discovery Service) instead of embedding RouteConfig
+	// This tells Envoy to fetch the route configuration dynamically via xDS
 	hcmConfig := &hcm.HttpConnectionManager{
 		StatPrefix: mHcm.StatPrefix,
-		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
-			RouteConfig: matchedRouteConfig,
+		RouteSpecifier: &hcm.HttpConnectionManager_Rds{
+			Rds: &hcm.Rds{
+				ConfigSource: &core.ConfigSource{
+					ResourceApiVersion: core.ApiVersion_V3,
+					ConfigSourceSpecifier: &core.ConfigSource_Ads{
+						Ads: &core.AggregatedConfigSource{},
+					},
+				},
+				RouteConfigName: mHcm.RouteConfigName,
+			},
 		},
 		HttpFilters: []*hcm.HttpFilter{
-			// Add other filters here in the future
-			routerFilter, // Add the correctly constructed router filter.
+			routerFilter,
 		},
 	}
 	return hcmConfig, nil
 }
 
-// (makeListeners is unchanged, but will now receive a correctly built HCM)
-func makeListeners(manifestListeners []Listener, routeConfigs []types.Resource) ([]types.Resource, error) {
+// makeListeners creates listeners that reference routes via RDS (not embedded)
+// NOTE: This function no longer needs routeConfigs as a parameter
+func makeListeners(manifestListeners []Listener) ([]types.Resource, error) {
 	resources := make([]types.Resource, len(manifestListeners))
 	for i, mListener := range manifestListeners {
 		var filters []*listener.Filter
 		for _, mFilter := range mListener.Filters {
 			if mFilter.Type == "http_connection_manager" {
-				hcmConfig, err := makeHTTPConnectionManager(mFilter.HTTPConnectionManager, routeConfigs)
+				// No longer pass routeConfigs - HCM uses RDS to reference by name
+				hcmConfig, err := makeHTTPConnectionManager(mFilter.HTTPConnectionManager)
 				if err != nil {
 					return nil, fmt.Errorf("listener %s: %w", mListener.Name, err)
 				}
@@ -219,5 +218,6 @@ func makeListeners(manifestListeners []Listener, routeConfigs []types.Resource) 
 		}
 		resources[i] = l
 	}
+
 	return resources, nil
 }

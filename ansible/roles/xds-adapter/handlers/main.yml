@@ -1,0 +1,12 @@
+---
+- name: "Restart xds-adapter service"
+  ansible.builtin.systemd:
+    name: "xds-adapter"
+    state: restarted
+    daemon_reload: yes
+
+- name: "Restart envoy service"
+  ansible.builtin.systemd:
+    name: "envoy"
+    state: restarted
+    daemon_reload: yes

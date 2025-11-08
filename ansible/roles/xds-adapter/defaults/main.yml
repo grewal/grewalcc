@@ -1,0 +1,4 @@
+---
+# roles/xds-adapter/defaults/main.yml
+xds_adapter_version: "v1.0"
+xds_adapter_image: "grewal/xds-adapter:{{ xds_adapter_version }}"
