@@ -12,8 +12,9 @@ service {
   check {
     id       = "redis-tcp-check"             # Unique ID for the check
     name     = "Redis TCP Port Check"        # Human-readable name
-    tcp      = "127.0.0.1:{{ redis_port | default(6379) }}" # Check if TCP port is open on loopback
-    interval = "120s"                         # How often to run the check
+    # The health check now targets the container directly via Docker's internal DNS on the grewalnet network.
+    tcp      = "redis:{{ redis_port | default(6379) }}" # Check if TCP port is open
+    interval = "30s"                         # Lowered interval for faster recovery
     timeout  = "2s"                          # How long to wait for connection
 
     failures_before_critical = 3             # Mark unhealthy after 3 consecutive failures

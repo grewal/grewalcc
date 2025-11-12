@@ -9,10 +9,11 @@ bootstrap_expect = 1
 
 enable_local_script_checks = true
 
-# Host networking configuration - use the internal IP variable
-bind_addr = "{{ consul_host_ip }}"
-advertise_addr = "{{ consul_host_ip }}"
-client_addr = "127.0.0.1"
+# Container networking configuration.
+# The 'raw' block tells Ansible's Jinja2 to ignore the HCL syntax.
+bind_addr = "{% raw %}{{ GetInterfaceIP \"eth0\" }}{% endraw %}"
+advertise_addr = "{% raw %}{{ GetInterfaceIP \"eth0\" }}{% endraw %}"
+client_addr = "0.0.0.0"
 
 # Enable UI
 ui_config {

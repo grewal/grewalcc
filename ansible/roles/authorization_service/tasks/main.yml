@@ -43,24 +43,27 @@
     pull: false
     recreate: true
     restart_policy: always
-    
+
     # --- Security & Permissions ---
     privileged: true # for BPF Filesystem access
     capabilities:
       - SYS_ADMIN   # Required for BPF/XDP operations
       - NET_ADMIN   # Required for attaching programs to network interfaces
       - IPC_LOCK    # Required for locking memory for BPF maps
-    
-    network_mode: host 
-    
+
+    # --- Networking ---
+    # This service REQUIRES host networking to access the physical NIC for XDP.
+    network_mode: host
+
     env:
+      # Now that it's on the host network, it accesses other services via 127.0.0.1
       CONSUL_HTTP_ADDR: "127.0.0.1:{{ consul_http_port | default(8500) }}"
       REDIS_ADDR: "127.0.0.1:{{ redis_port | default(6379) }}"
       REDIS_PASSWORD: "{{ redis_password }}"
-      
+
       HTTP_LISTEN_ADDR: ":{{ authz_service_http_port_container | default(9001) }}"
       GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port_container | default(9002) }}"
-      
+
       LOG_LEVEL: "{{ authz_service_log_level | default('INFO') }}"
       XDP_GLOBAL_ENABLED: "true"
       XDP_INTERFACE_NAME: "{{ authz_service_xdp_interface | default('ens4') }}"
