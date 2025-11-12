@@ -1,18 +1,23 @@
-# contents of roles/authz_service/templates/authz-service-http.hcl.j2
+# contents of roles/authorization_service/templates/authz-service-http.hcl.j2
 service {
   name = "authz-service"
   id   = "authz-service-{{ ansible_hostname | default('localhost') }}-http"
   tags = ["ext_authz", "security", "go", "http", "l7"]
 
+  # The service runs on the host, so we advertise the node's address.
+  # This field isn't strictly necessary if it defaults to the agent's address,
+  # but it is explicit and correct.
   address = "127.0.0.1"
-  port    = {{ authz_service_http_port | default(9001) }}
+  port = {{ authz_service_http_port_container | default(9001) }}
 
   check {
     id       = "authz-service-http-health"
     name     = "AuthZ Service HTTP Health Check"
-    http     = "http://127.0.0.1:{{ authz_service_http_port | default(9001) }}/healthz"
+    # From the Consul container (on grewalnet), check the service running on the host network
+    # via the special 'host.docker.internal' DNS name.
+    http     = "http://host.docker.internal:{{ authz_service_http_port_container | default(9001) }}/healthz"
     method   = "GET"
-    interval = "110s"
+    interval = "30s"
     timeout  = "2s"
     failures_before_critical = 3
     DeregisterCriticalServiceAfter = "5m"

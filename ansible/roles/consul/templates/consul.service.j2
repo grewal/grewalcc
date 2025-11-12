@@ -11,11 +11,13 @@ RestartSec=10s
 ExecStartPre=-/usr/bin/docker stop consul
 ExecStartPre=-/usr/bin/docker rm consul
 
-# Run the Consul server container
-# Mount the config directory /etc/consul.d read-only.
-# Mount the host data directory /opt/consul/data read-write.
-# Use the config DIRECTORY argument.
-ExecStart=/usr/bin/docker run --rm --network host --name consul \
+# Run the Consul server container on the grewalnet bridge network.
+# We explicitly publish the necessary ports back to the host's loopback interface.
+ExecStart=/usr/bin/docker run --rm --name consul \
+  --network {{ docker_network_name | default('grewalnet') }} \
+  -p 127.0.0.1:{{ consul_http_port | default(8500) }}:{{ consul_http_port | default(8500) }} \
+  -p 127.0.0.1:{{ consul_dns_port | default(8600) }}:{{ consul_dns_port | default(8600) }}/tcp \
+  -p 127.0.0.1:{{ consul_dns_port | default(8600) }}:{{ consul_dns_port | default(8600) }}/udp \
   -v /etc/consul.d:/etc/consul.d:ro \
   -v /opt/consul/data:/consul/data \
   {{ consul_docker_image_repository }}:{{ consul_docker_image_tag }} agent -config-dir=/etc/consul.d

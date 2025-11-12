@@ -22,7 +22,8 @@ ExecStart=/usr/bin/docker run --rm --name envoy-svc \
   -v /etc/envoy/envoy-dynamic.yaml:/etc/envoy/envoy.yaml:ro \
   -v /etc/letsencrypt:/etc/letsencrypt:ro \
   {{ envoy_image_repository }}:{{ envoy_image_tag }} \
-  -c /etc/envoy/envoy.yaml
+  -c /etc/envoy/envoy.yaml \
+  --log-level debug
 
 ExecStop=/usr/bin/docker stop envoy-svc
 

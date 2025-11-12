@@ -26,9 +26,9 @@ type TLS struct {
 
 // Filter represents a network filter in an Envoy listener's filter chain.
 type Filter struct {
-	Type                  string                `yaml:"type"` // e.g., "network.rbac", "http_connection_manager"
-	RBAC                  *RBAC                 `yaml:"rbac,omitempty"`
-	NetworkExtAuthz       *NetworkExtAuthz      `yaml:"network_ext_authz,omitempty"`
+	Type                  string                 `yaml:"type"` // e.g., "network.rbac", "http_connection_manager"
+	RBAC                  *RBAC                  `yaml:"rbac,omitempty"`
+	NetworkExtAuthz       *NetworkExtAuthz       `yaml:"network_ext_authz,omitempty"`
 	HTTPConnectionManager *HTTPConnectionManager `yaml:"http_connection_manager,omitempty"`
 }
 
@@ -62,8 +62,8 @@ type HTTPConnectionManager struct {
 
 // HTTPFilter represents a filter within the HTTP connection manager.
 type HTTPFilter struct {
-	Type     string      `yaml:"type"` // e.g., "ext_authz", "grpc_web", "router"
-	ExtAuthz *HTTPExtAuthz `yaml:"ext_authz,omitempty"`
+	Type     string       `yaml:"type"` // e.g., "ext_authz", "grpc_web", "router"
+	ExtAuthz *HTTPExtAuthz  `yaml:"ext_authz,omitempty"`
 }
 
 // HTTPExtAuthz defines the config for the L7 external authorization HTTP filter.
@@ -88,8 +88,9 @@ type VirtualHost struct {
 
 // Route defines a single routing rule.
 type Route struct {
-	Match  RouteMatch  `yaml:"match"`
-	Action RouteAction `yaml:"action"`
+	Match           RouteMatch  `yaml:"match"`
+	Action          RouteAction `yaml:"action"`
+	DisableExtAuthz bool        `yaml:"disable_ext_authz,omitempty"` // NEW
 }
 
 // RouteMatch specifies the criteria for matching a request.
@@ -100,14 +101,21 @@ type RouteMatch struct {
 
 // RouteAction specifies what to do when a route matches.
 type RouteAction struct {
-	Cluster        string    `yaml:"cluster,omitempty"`
-	TimeoutSeconds int       `yaml:"timeout_seconds,omitempty"`
-	Redirect       *Redirect `yaml:"redirect,omitempty"`
+	Cluster        string          `yaml:"cluster,omitempty"`
+	TimeoutSeconds int             `yaml:"timeout_seconds,omitempty"`
+	Redirect       *Redirect       `yaml:"redirect,omitempty"`
+	DirectResponse *DirectResponse `yaml:"direct_response,omitempty"` // NEW
 }
 
 // Redirect defines an HTTP redirect action.
 type Redirect struct {
 	HttpsRedirect bool `yaml:"https_redirect"`
+}
+
+// DirectResponse defines a direct HTTP response without proxying. (NEW)
+type DirectResponse struct {
+	Status int    `yaml:"status"`
+	Body   string `yaml:"body"`
 }
 
 // Cluster defines an upstream service cluster, correctly using DNS for discovery.
