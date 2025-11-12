@@ -39,7 +39,6 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      # THIS IS THE FIX:
                       # Use the container name for service discovery within the Docker bridge network.
                       address: xds-adapter
                       port_value: 18000

@@ -49,6 +49,15 @@ routes:
       - name: grewal_cc_virtual_host
         domains: ["*"]
         routes:
+          # NEW: Unprotected health check for the Google Cloud Load Balancer.
+          # This route uses a direct_response to have Envoy reply immediately,
+          # and it has 'disable_ext_authz: true' to bypass security checks.
+          - match: { path: "/healthz" }
+            action:
+              direct_response:
+                status: 200
+                body: "healthy"
+            disable_ext_authz: true
           - match: { prefix: "/health" }
             action: { cluster: "auth_service_cluster" }
           - match: { prefix: "/metrics" }

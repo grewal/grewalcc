@@ -11,9 +11,10 @@ service {
   check {
     id       = "web-tcp-check"
     name     = "Next.js TCP Port Check"
-    # The health check targets the unique port published to the host's loopback interface.
-    tcp      = "127.0.0.1:{{ grewal_cc_web_host_health_check_port }}"
-    interval = "180s"
+    # The health check now targets the container directly via Docker's internal DNS on the grewalnet network.
+    tcp      = "grewal-cc-web:{{ grewal_cc_web_container_port }}"
+    interval = "30s" # Lowered interval for faster recovery
     timeout  = "3s"
+    DeregisterCriticalServiceAfter = "5m"
   }
 }
