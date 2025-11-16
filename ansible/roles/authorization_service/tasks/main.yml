@@ -1,24 +1,29 @@
----
-# ansible/roles/authorization_service/tasks/main.yml
+# FILE: ansible/roles/authorization_service/tasks/main.yml
 
+---
 - name: Pull the specified authz-service Docker image
   community.docker.docker_image:
     name: "{{ authz_service_image_repository }}:{{ authz_service_image_tag }}"
     source: pull
   become: yes
-  tags:
-    - authorization_service
 
 - name: Ensure BPF filesystem is mounted persistently
   ansible.posix.mount:
     path: /sys/fs/bpf
-    src: bpf
+    src: none
     fstype: bpf
-    opts: defaults
+    opts: mode=0755
     state: mounted
   become: yes
-  tags:
-    - authorization_service
+
+- name: Create BPF pin directory for authz-service
+  ansible.builtin.file:
+    path: /sys/fs/bpf/grewalcc
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  become: yes
 
 - name: Deploy Consul service definitions for authz-service
   ansible.builtin.template:
@@ -31,52 +36,37 @@
     - authz-service-http
     - authz-service-grpc
   become: yes
-  notify: Restart consul service
-  tags:
-    - authorization_service
+  notify: Reload Consul Configuration
 
-- name: Ensure authz-service container is running securely on the HOST network
+- name: Stop existing authz-service container if running
   community.docker.docker_container:
     name: authz-service
-    image: "{{ authz_service_image_repository }}:{{ authz_service_image_tag }}"
-    state: started
-    pull: false
-    recreate: true
-    restart_policy: always
-
-    # --- Security & Permissions ---
-    privileged: true # for BPF Filesystem access
-    capabilities:
-      - SYS_ADMIN   # Required for BPF/XDP operations
-      - NET_ADMIN   # Required for attaching programs to network interfaces
-      - IPC_LOCK    # Required for locking memory for BPF maps
-
-    # --- Networking ---
-    # This service REQUIRES host networking to access the physical NIC for XDP.
-    network_mode: host
-
-    env:
-      # Now that it's on the host network, it accesses other services via 127.0.0.1
-      CONSUL_HTTP_ADDR: "127.0.0.1:{{ consul_http_port | default(8500) }}"
-      REDIS_ADDR: "127.0.0.1:{{ redis_port | default(6379) }}"
-      REDIS_PASSWORD: "{{ redis_password }}"
-
-      HTTP_LISTEN_ADDR: ":{{ authz_service_http_port_container | default(9001) }}"
-      GRPC_LISTEN_ADDR: ":{{ authz_service_grpc_port_container | default(9002) }}"
-
-      LOG_LEVEL: "{{ authz_service_log_level | default('INFO') }}"
-      XDP_GLOBAL_ENABLED: "true"
-      XDP_INTERFACE_NAME: "{{ authz_service_xdp_interface | default('ens4') }}"
-      XDP_OBJECT_PATH: "{{ authz_service_xdp_object_path | default('/app/ebpf/kernel/xdp_ip_blocker.o') }}"
-      XDP_MAP_ROOT_PATH: "{{ authz_service_xdp_map_root_path | default('/sys/fs/bpf/grewalcc') }}"
-
-    volumes:
-      - /sys/fs/bpf:/sys/fs/bpf:rshared
-
-    labels:
-      service: authz-service
-      managed_by: ansible
-
+    state: absent
   become: yes
-  tags:
-    - authorization_service
+  ignore_errors: yes
+
+- name: Start authz-service container with XDP firewall disabled
+  ansible.builtin.shell: |
+    docker run -d \
+      --name authz-service \
+      --restart always \
+      --network host \
+      --privileged \
+      --security-opt seccomp=unconfined \
+      --security-opt apparmor=unconfined \
+      --cap-add=SYS_ADMIN \
+      --cap-add=NET_ADMIN \
+      --cap-add=SYS_RESOURCE \
+      --cap-add=IPC_LOCK \
+      --ulimit memlock=-1:-1 \
+      -v /sys/fs/bpf:/sys/fs/bpf \
+      -e VALKEY_ADDR="{{ authz_env.VALKEY_ADDR }}" \
+      -e CONSUL_ADDR="{{ authz_env.CONSUL_ADDR }}" \
+      -e VALKEY_PASSWORD="{{ authz_env.VALKEY_PASSWORD }}" \
+      -e SKIP_XDP_FIREWALL="true" \
+      --label service=authz-service \
+      --label managed_by=ansible \
+      {{ authz_service_image_repository }}:{{ authz_service_image_tag }}
+  become: yes
+  register: docker_run_result
+  changed_when: docker_run_result.rc == 0

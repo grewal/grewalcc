@@ -1,31 +1,70 @@
-# FILE: go/Dockerfile
+# FILE: services/authorization/go/Dockerfile
+# Production-grade multi-stage Dockerfile for Phoenix authorization service
+# This container runs with minimal attack surface and follows security best practices.
 
 # --- Stage 1: Go Builder ---
-FROM golang:1.23-alpine AS builder
+# Use Go 1.24+ for the latest cilium/ebpf library features and performance improvements.
+FROM golang:1.24-alpine AS builder
+
+# Install build-time dependencies for eBPF C compilation.
+# clang: C compiler for eBPF programs
+# llvm: Required by clang for eBPF target support
+# build-base: Provides standard C build tools
+# linux-headers: Provides kernel headers for bpf2go
+# libbpf-dev: (FIX) Provides the critical <bpf/bpf_helpers.h> and other libbpf headers.
+RUN apk add --no-cache \
+    build-base \
+    clang \
+    llvm \
+    linux-headers \
+    libbpf-dev
 
 WORKDIR /app
 
-COPY services/authorization/go/go.mod services/authorization/go/go.sum ./
-RUN go mod download
+# Copy module files first to leverage Docker's layer caching.
+# This step is only re-run if go.mod or go.sum changes.
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
 
-COPY services/authorization/go/ ./
+# Copy the entire service source code into the builder.
+COPY . .
 
-# Build the final Go binary. The 'go:embed' directive will handle the .o file.
-RUN go build -ldflags="-s -w" -o /authz-service .
+# Compile the eBPF C code and generate the Go wrapper.
+# This executes the //go:generate directive in kernel/bpf.go.
+RUN go generate ./...
 
+# Build the final, statically-linked Go binary for a minimal container.
+# CGO_ENABLED=0: Creates a pure Go binary with no C dependencies.
+# -s -w: Linker flags to strip debug symbols and DWARF info, reducing binary size.
+# -trimpath: Remove file system paths from the binary for reproducible builds.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-s -w -extldflags '-static'" \
+    -trimpath \
+    -o /authz-service .
 
 # --- Stage 2: Final Runtime Image ---
-FROM alpine:latest
+# Use Google's distroless image for minimal attack surface.
+# This image contains only the bare essentials to run the Go binary.
+FROM gcr.io/distroless/static-debian12:nonroot
 
-RUN apk add --no-cache ca-certificates
+# Labels for container metadata (useful for orchestration and auditing)
+LABEL maintainer="ygrewal@gmail.com" \
+      description="Grewal.cc Security Control Plane" \
+      version="2.0-final" \
+      security.policy="kernel-first-defense"
 
-# Copy the Go binary from the builder stage
-COPY --from=builder /authz-service /usr/local/bin/authz-service
+# Copy the compiled Go binary from the builder stage.
+COPY --from=builder /authz-service /authz-service
 
-# Set default environment variables
-ENV XDP_GLOBAL_ENABLED=true
-ENV XDP_INTERFACE_NAME=ens4
+# The distroless nonroot image runs as UID 65532 by default.
+# No need to explicitly set USER as the base image handles this.
 
-EXPOSE 9001 9002
+# Expose the gRPC and metrics/health ports.
+EXPOSE 9001 9090
 
-CMD ["/usr/local/bin/authz-service"]
+# Define the command to run the service.
+# Using ENTRYPOINT is a best practice for containers.
+ENTRYPOINT ["/authz-service"]
+
+# CMD provides default arguments to the ENTRYPOINT, which can be overridden at runtime.
+CMD ["--grpc-addr=:9001", "--http-addr=:9090"]

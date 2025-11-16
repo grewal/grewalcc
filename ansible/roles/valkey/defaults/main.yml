@@ -1,0 +1,14 @@
+# FILE: roles/valkey/defaults/main.yml
+---
+# defaults file for the valkey role
+valkey_image_repository: "valkey/valkey"
+valkey_image_tag: "9.0-alpine"
+valkey_container_name: "valkey"
+valkey_port: 6379
+
+# The address on the host that the container's port is published to.
+# This is the address that host-networked services (like authz-service) must use to connect.
+valkey_bind_address: "127.0.0.1"
+
+# Define a host path for persistent data.
+valkey_data_dir_host: "/opt/valkey/data"

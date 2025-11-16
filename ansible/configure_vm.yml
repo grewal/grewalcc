@@ -1,4 +1,4 @@
-# ansible/configure_vm.yml
+# FILE: ansible/configure_vm.yml
 ---
 - name: Configure gcc-gem-a VM
   hosts: gcc-gem-a
@@ -6,6 +6,12 @@
 
   vars_files:
     - vars/secrets.yml
+
+  vars:
+    valkey_bind_address: "127.0.0.1"
+    valkey_port: 6379
+    consul_host_ip: "10.128.0.22"
+    consul_http_port: 8500
 
   pre_tasks:
     - name: Ensure grewalnet Docker network exists
@@ -18,6 +24,33 @@
       ansible.builtin.package:
         name: rsync
         state: present
+      tags: [always]
+
+    # VALIDATION: Fail fast if critical secrets are missing
+    - name: Validate that Valkey password is defined
+      ansible.builtin.assert:
+        that:
+          - valkey_password is defined
+          - valkey_password | length > 0
+        fail_msg: "CRITICAL: valkey_password must be defined in vars/secrets.yml and cannot be empty"
+        success_msg: "Valkey password is properly configured"
+      tags: [always]
+
+    - name: Compute container env map for authorization_service
+      ansible.builtin.set_fact:
+        authz_env:
+          VALKEY_ADDR: "{{ valkey_bind_address }}:{{ valkey_port }}"
+          CONSUL_ADDR: "{{ consul_host_ip }}:{{ consul_http_port }}"
+          VALKEY_PASSWORD: "{{ valkey_password }}"
+      tags: [always]
+
+    # DEBUG: enable to verify environment variables
+    - name: Debug authz_env for verification
+      ansible.builtin.debug:
+        msg:
+          - "VALKEY_ADDR: {{ authz_env.VALKEY_ADDR }}"
+          - "CONSUL_ADDR: {{ authz_env.CONSUL_ADDR }}"
+          - "VALKEY_PASSWORD: {{ 'SET (hidden)' if authz_env.VALKEY_PASSWORD else 'NOT SET' }}"
       tags: [always]
 
   tasks:
@@ -42,18 +75,17 @@
         - Restart gce-workload-cert-refresh timer
       tags: [always]
 
-    - name: Apply Redis Host Optimizations
+    - name: Apply Host Optimizations
       block:
-        - name: Set vm.overcommit_memory for Redis
+        - name: Set vm.overcommit_memory for Valkey/Redis
           ansible.builtin.copy:
             src: 99-grewalcc-redis-kernel-custom.conf
-            dest: /etc/sysctl.d/99-grewalcc-redis-kernel-custom.conf
+            dest: /etc/sysctl.d/99-grewalcc-kernel-custom.conf
             owner: root
             group: root
             mode: '0644'
           notify: Apply sysctl
-
-        - name: Disable Transparent Huge Pages (THP) for Redis
+        - name: Disable Transparent Huge Pages (THP) for Valkey/Redis
           ansible.builtin.lineinfile:
             path: /etc/rc.local
             regexp: '^echo never > /sys/kernel/mm/transparent_hugepage/enabled'
@@ -63,14 +95,15 @@
             group: root
             mode: '0755'
           notify: Apply THP now
-
       tags: [always]
 
   roles:
     - role: consul
       tags: ['consul']
-    - role: redis
-      tags: ['redis']
+    - role: valkey
+      tags: ['valkey']
+    #- role: redis
+      #tags: ['redis']
     - role: authorization_service
       tags: ['authorization_service']
     - role: authentication_service
@@ -86,52 +119,44 @@
 
   handlers:
     - name: Apply sysctl
-      ansible.builtin.command: sysctl -p /etc/sysctl.d/99-grewalcc-redis-kernel-custom.conf
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/99-grewalcc-kernel-custom.conf
       become: yes
-
     - name: Apply THP now
       ansible.builtin.command: echo never > /sys/kernel/mm/transparent_hugepage/enabled
       become: yes
-
     - name: Reload Consul Configuration
       listen: "Reload Consul Configuration"
       ansible.builtin.command: "docker exec consul consul reload"
       changed_when: true
       become: yes
-
     - name: Restart consul service
       listen: "Restart consul service"
       ansible.builtin.systemd:
         name: consul.service
         state: restarted
       become: yes
-
     - name: Restart prometheus service
       listen: "Restart prometheus service"
       ansible.builtin.systemd:
         name: prometheus.service
         state: restarted
       become: yes
-
     - name: Restart envoy service
       listen: "Restart envoy service"
       ansible.builtin.systemd:
         name: envoy.service
         state: restarted
       become: yes
-
     - name: Restart xds-adapter service
       listen: "Restart xds-adapter service"
       ansible.builtin.systemd:
         name: xds-adapter.service
         state: restarted
       become: yes
-
     - name: Reload systemd daemon
       ansible.builtin.systemd:
         daemon_reload: yes
       become: yes
-
     - name: Restart gce-workload-cert-refresh timer
       ansible.builtin.systemd:
         name: gce-workload-cert-refresh.timer

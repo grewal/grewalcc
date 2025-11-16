@@ -1,11 +1,14 @@
+# FILE: roles/authorization_service/defaults/main.yml
 authz_service_image_repository: "grewal/authz-service"
-authz_service_image_tag: "v0.8.14"
+authz_service_image_tag: "v2.0.6"
 
-authz_service_http_port: 9001 # Host port for HTTP access for Envoy
-authz_service_http_port_container: 9001 # for HTTP INSIDE container
+# Port for Envoy's ext_authz gRPC requests
+authz_service_grpc_port: 9001
+authz_service_grpc_port_container: 9001
 
-authz_service_grpc_port: 9002 # Host port for gRPC access for Envoy
-authz_service_grpc_port_container: 9002 # for gRPC INSIDE container
+# Port for Prometheus metrics and /healthz endpoint
+authz_service_metrics_port: 9090
+authz_service_metrics_port_container: 9090
 
 authz_service_log_level: "INFO"
 consul_host_ip: "10.128.0.22"
