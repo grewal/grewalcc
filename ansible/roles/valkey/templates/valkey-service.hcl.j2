@@ -1,0 +1,23 @@
+# FILE: roles/valkey/templates/valkey-service.hcl.j2
+# Ansible managed - Template: roles/valkey/templates/valkey-service.hcl.j2
+# Consul Service Definition for Valkey
+
+service {
+  name = "valkey"
+  id   = "valkey-{{ ansible_hostname | default('localhost') }}"
+  port = {{ valkey_port | default(6379) }}
+
+  tags = ["key-value", "state-db"]
+
+  # Health Check Configuration
+  check {
+    id       = "valkey-tcp-check"             # Unique ID for the check
+    name     = "Valkey TCP Port Check"        # Human-readable name
+    
+    # The health check targets the container directly via Docker's internal DNS on the grewalnet network.
+    tcp      = "valkey:{{ valkey_port | default(6379) }}" # Check if TCP port is open
+    interval = "10s"                         # Check every 10 seconds
+    timeout  = "2s"                          # How long to wait for connection
+    failures_before_critical = 3             # Mark unhealthy after 3 consecutive failures
+  }
+}

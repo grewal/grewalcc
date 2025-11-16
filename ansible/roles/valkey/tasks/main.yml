@@ -1,0 +1,59 @@
+# FILE: roles/valkey/tasks/main.yml
+---
+# tasks file for the valkey role
+
+- name: Ensure Valkey host data directory exists
+  ansible.builtin.file:
+    path: "{{ valkey_data_dir_host }}"
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: '0755'
+  become: yes
+
+- name: Ensure Valkey container is running
+  community.docker.docker_container:
+    name: "{{ valkey_container_name }}"
+    image: "{{ valkey_image_repository }}:{{ valkey_image_tag }}"
+    state: started
+    pull: true
+    recreate: true
+    restart_policy: always
+    networks:
+      - name: "grewalnet"
+    memory: "125m"
+    command:
+      - "--save"
+      - ""
+      - "--appendonly"
+      - "yes"
+      - "--requirepass"
+      - "{{ valkey_password }}"
+      - "--maxmemory"
+      - "100mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+    ports:
+      - "{{ valkey_bind_address | default('127.0.0.1') }}:{{ valkey_port | default(6379) }}:{{ valkey_port | default(6379) }}"
+    volumes:
+      - "{{ valkey_data_dir_host }}:/data"
+    labels:
+      service: valkey
+      managed_by: ansible
+  become: yes
+  register: valkey_container_result
+
+- name: Show Valkey container result status
+  ansible.builtin.debug:
+    msg: "Valkey container status: {{ 'Changed/Recreated' if valkey_container_result.changed else 'Unchanged/Already Running' }}"
+  when: valkey_container_result is defined
+
+- name: Deploy Consul service definition for Valkey
+  ansible.builtin.template:
+    src: valkey-service.hcl.j2
+    dest: "/etc/consul.d/valkey-service.hcl"
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: Reload Consul Configuration

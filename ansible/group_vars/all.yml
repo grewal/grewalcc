@@ -1,22 +1,26 @@
+# FILE: group_vars/all.yml
 ---
 # Global variables for the grewal.cc environment
 
 # The GCP Project ID where the infrastructure is hosted.
-# Used for constructing names for resources like GCS buckets.
-gcp_project_id: "mysides" # Replace with your actual GCP Project ID if different
+gcp_project_id: "mysides"
 
 # The name of the user-defined Docker bridge network for application services.
 docker_network_name: "grewalnet"
 
+# --- Service Addresses ---
 # The address and port for the Consul agent's HTTP API.
 consul_host_address: "host.docker.internal"
 consul_api_port: 8500
+
+# Valkey connection details for host-networked services.
+valkey_bind_address: "127.0.0.1"
+valkey_port: 6379
 
 # The directory on the host where Consul service definition files are stored.
 consul_config_dir: "/etc/consul.d"
 
 # Systemd override content to throttle the GCE workload certificate refresh service.
-# This is used to mitigate the 10-minute CPU spikes.
 gce_cert_refresh_override_content: |
   [Service]
   Nice=10
