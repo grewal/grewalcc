@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = [
+    "kernel-firewall-common",
+    "kernel-firewall-ebpf",
+    "xtask",
+    "kernel-firewall",
+]
