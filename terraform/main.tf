@@ -1,70 +1,64 @@
-# main.tf
+# terraform/main.tf
 
 resource "google_compute_address" "grewalcc_static_ip" {
   name    = "grewalcc-static-ip-external"
   project = "mysides"
   region  = "us-central1"
-
-lifecycle {
-    ignore_changes = [
-      # Ignore auto-populated changes by GCP to the description
-      description,
-    ]
-  }
+  lifecycle { ignore_changes = [description] }
 }
 
 resource "google_compute_instance" "gcc_gem_a" {
-  project      = "mysides" # Explicitly set project, although inherited from provider
+  project      = "mysides"
   name         = "gcc-gem-a"
-  machine_type = "e2-micro" # Matches "projects/mysides/zones/us-central1-f/machineTypes/e2-micro"
+  machine_type = "e2-micro"
   zone         = "us-central1-f"
 
   tags = ["http-server", "https-server", "lb-health-check"]
 
   labels = {
-    "goog-ops-agent-policy" = "v2-x86-template-1-4-0"
+    # REMOVED: "goog-ops-agent-policy" (Resource Rationalization)
+    "os_family"             = "debian"
+    "os_version"            = "trixie"
+    "kernel_target"         = "zabbly-6-17-11"
+    "provisioned_at"        = "2025-12-12"
+    "environment"           = "dev"
+    "owner"                 = "monty"
   }
 
   boot_disk {
     initialize_params {
-      # Image family derived from JSON licenses/name
-      image = "debian-cloud/debian-12"
-      size  = 15 # Matches "diskSizeGb": "15"
-      # Confirmed Balanced Persistent Disk
-      type = "pd-balanced"
+      image = "debian-cloud/debian-13"
+      size  = 15
+      type  = "pd-balanced"
     }
-    # Match "autoDelete": true from the JSON disk info
     auto_delete = true
-    # Match "deviceName": "gcc-gem-a" from the JSON disk info
     device_name = "gcc-gem-a"
   }
 
   network_interface {
-    # Match "network": ".../global/networks/default"
-    network = "default"
-    # Match "subnetwork": ".../regions/us-central1/subnetworks/default"
+    network    = "default"
     subnetwork = "default"
-
-    # Match "networkIP": "10.128.0.22"
-    # Set the specific internal IP to ensure consistency with the existing setup
     network_ip = "10.128.0.22"
-
     access_config {
-	nat_ip = google_compute_address.grewalcc_static_ip.address
+        nat_ip = google_compute_address.grewalcc_static_ip.address
     }
   }
 
-  # Match "metadata" block from JSON, including ssh-keys
   metadata = {
     enable-osconfig = "TRUE"
-    # IMPORTANT: Include existing SSH keys from JSON to match state for import
+    
+    # 1. EMERGENCY ACCESS: Keep this TRUE
+    serial-port-enable = "true"
+    
+    # 2. DISABLE LOGGING: Stop Google from wasting CPU scraping the console.
+    serial-port-logging-enable = "false"
+    
     ssh-keys = <<-EOT
       ygrewal:ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBMvD1dCerU4ca4lwca9SoK1iMs921ibp3HHiut8U7A9agI0NU+JvBQf3nWe1Qd7ELMSx7ETUFV4B1BbTiMBaIdo= google-ssh {"userName":"ygrewal@gmail.com","expireOn":"2025-03-09T06:45:13+0000"}
       ygrewal:ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCiGRuNooUjZMzl7KScyjZGe8VpXPEnNuL/li/HWI3EIYZR8MUWgMxT4jjhACWPpC/9erzCnO90WW6iRpbcu8meo0spGccNJ+P8PN+fBzs/qAFRPLhPEI9V18cmsZ/oCzTdS8Inz0WI32SH3RPMNahRDMckT+29E+AhrMuwKhgr8Ax5nVvoh/q+0RhTo4ou65eHKiDppBVPvU9AF0IfVjItETXGOXzp5oCHjgGSAXT68tIqgpwiIWsg4ZKTTPigpnBf9zWg5F1/3lzIbkFLzT5Tl66Kz1/q1s7mMh/vdNAjHL4l1ViCC93pPP3q7+P8ng1K11jlpo+zXDIw+WEPmYOT google-ssh {"userName":"ygrewal@gmail.com","expireOn":"2025-03-09T06:45:17+0000"}
     EOT
   }
 
-  # Match "serviceAccounts": [ { "email": "...", "scopes": [...] } ]
   service_account {
     email  = "62940940662-compute@developer.gserviceaccount.com"
     scopes = [
@@ -77,38 +71,26 @@ resource "google_compute_instance" "gcc_gem_a" {
     ]
   }
 
-  # Match "shieldedInstanceConfig" / "shieldedVmConfig"
   shielded_instance_config {
-    enable_secure_boot          = false # Matches "enableSecureBoot": false
-    enable_vtpm                 = true  # Matches "enableVtpm": true
-    enable_integrity_monitoring = true  # Matches "enableIntegrityMonitoring": true
+    enable_secure_boot          = false
+    enable_vtpm                 = true
+    enable_integrity_monitoring = true
   }
 
-  # Match "scheduling" block details
   scheduling {
-    provisioning_model  = "STANDARD"  # Matches "provisioningModel": "STANDARD"
-    on_host_maintenance = "MIGRATE"   # Matches "onHostMaintenance": "MIGRATE"
-    automatic_restart   = true        # Matches "automaticRestart": true
-    preemptible         = false       # Matches "preemptible": false
+    provisioning_model  = "STANDARD"
+    on_host_maintenance = "MIGRATE"
+    automatic_restart   = true
+    preemptible         = false
   }
 
-  # Match "deletionProtection": false
   deletion_protection = false
-
-  # Match "canIpForward": false
-  can_ip_forward = false
-
-  # Match "displayDevice": { "enableDisplay": false }
-  # Terraform handles this implicitly or via advanced_machine_features if needed.
-  # Let's omit explicit advanced_machine_features unless plan shows a diff.
+  can_ip_forward      = false
 
    lifecycle {
-     prevent_destroy = true // Optional: Add extra safety against accidental destruction later.
+     prevent_destroy = false 
      ignore_changes = [
-       // Example: If OS Login *also* manages keys and causes conflicts with metadata:
-       // metadata["ssh-keys"],
-       // Example: If GCP adds labels automatically we don't care about:
-        labels,
+        labels["goog-ops-agent-policy"], 
         metadata["ssh-keys"],
      ]
    }
