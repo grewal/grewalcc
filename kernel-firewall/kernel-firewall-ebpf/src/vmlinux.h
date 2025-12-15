@@ -158009,7 +158009,6 @@ extern void cubictcp_state(struct sock *sk, u8 new_state) __weak __ksym;
 extern struct hid_bpf_ctx *hid_bpf_allocate_context(unsigned int hid_id) __weak __ksym;
 extern __u8 *hid_bpf_get_data(struct hid_bpf_ctx *ctx, unsigned int offset, const size_t rdwr_buf_size) __weak __ksym;
 extern int hid_bpf_hw_output_report(struct hid_bpf_ctx *ctx, __u8 *buf, size_t buf__sz) __weak __ksym;
-extern int hid_bpf_hw_request(struct hid_bpf_ctx *ctx, __u8 *buf, size_t buf__sz, enum hid_report_type rtype, enum hid_class_request reqtype) __weak __ksym;
 extern int hid_bpf_input_report(struct hid_bpf_ctx *ctx, enum hid_report_type type, u8 *buf, const size_t buf__sz) __weak __ksym;
 extern void hid_bpf_release_context(struct hid_bpf_ctx *ctx) __weak __ksym;
 extern int hid_bpf_try_input_report(struct hid_bpf_ctx *ctx, enum hid_report_type type, u8 *buf, const size_t buf__sz) __weak __ksym;
