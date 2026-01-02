@@ -2,6 +2,8 @@
 name = "kernel-firewall-common"
 version = "0.1.0"
 edition = "2024"
+authors = ["monty"]
+description = "Common ABI and shared logic for the KernelWall Sentinel"
 
-#Dependencies
 [dependencies]
+# Currently zero-dependency for maximum performance and no_std compatibility.
