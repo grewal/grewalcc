@@ -184,3 +184,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /web/grewalcc-fluid-simulation/target/
+
+# XDP firewall builds
+/kernel-firewall/target/
