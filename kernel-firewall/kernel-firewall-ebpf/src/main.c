@@ -1,6 +1,6 @@
 /* 
- * KERNELWALL - V25.5 "WARP SENTINEL" 
- * Liveness Check: Bypass MAC Gate to verify Arena plumbing.
+ * KERNELWALL - V25.6 "ATOMIC-FREE FIREWALL" 
+ * Data Plane: Physical Sharding (No Atomics)
  */
 
 #include <linux/bpf.h>
@@ -26,11 +26,11 @@ int xdp_warp_sentinel(struct xdp_md *ctx) {
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
 
-    /* --- PHASE 1: BOUNDS CHECK ONLY --- */
+    /* --- PHASE 1: INGRESS (3ns) --- */
     struct ethhdr *eth = data;
     if ((void *)(eth + 1) > data_end) return XDP_PASS;
 
-    /* --- PHASE 2: METADATA --- */
+    /* --- PHASE 2: IDENTITY --- */
     __u32 cpu_id = bpf_get_smp_processor_id();
     if (cpu_id >= 2) return XDP_PASS;
 
@@ -38,15 +38,15 @@ int xdp_warp_sentinel(struct xdp_md *ctx) {
     struct shard_meta *meta = bpf_map_lookup_elem(&shard_meta_map, &key);
     if (!meta) return XDP_PASS;
 
-    /* --- PHASE 3: ADAPTIVE SAMPLING --- */
-    __u64 pkt_count = __sync_fetch_and_add(&meta->total_packets, 1);
+    /* --- PHASE 3: SAMPLING (Non-Atomic) --- */
+    /* Standard increment: CPU core owns this memory, no LOCK needed */
+    __u64 pkt_count = meta->total_packets++;
     
-    /* Sample 1 in 128 packets of ANY traffic */
-    if ((pkt_count & 0x3) != 0) {
+    if ((pkt_count & 0x7F) != 0) {
         return XDP_PASS;
     }
 
-    /* --- PHASE 4: ARENA TELEMETRY --- */
+    /* --- PHASE 4: ARENA COMMIT (Lockless) --- */
     void __arena *arena_base = (void __arena *)(long)&arena_map;
     if (!arena_base) return XDP_PASS;
 
@@ -54,20 +54,25 @@ int xdp_warp_sentinel(struct xdp_md *ctx) {
         meta->canary = 0xC0FFEE01FACADE42ULL;
     }
 
-    __u32 sample_offset = METADATA_LIMIT + (cpu_id * SAMPLES_PER_SHARD * sizeof(struct latency_sample));
+    /* Hardware-Locked Sharding: Direct 512KB jump per CPU */
+    __u32 shard_offset = cpu_id * SHARD_SIZE_BYTES;
     struct latency_sample __arena *samples = 
-        (struct latency_sample __arena *)((char __arena *)arena_base + sample_offset);
+        (struct latency_sample __arena *)((char __arena *)arena_base + shard_offset + METADATA_LIMIT);
     
-    __u32 idx = __sync_fetch_and_add(&meta->write_idx, 1) & (SAMPLES_PER_SHARD - 1);
+    /* Lockless Ring Management */
+    __u32 idx = meta->write_idx & (SAMPLES_PER_SHARD - 1);
     struct latency_sample __arena *s = &samples[idx];
     
+    /* Direct Assignment */
     s->tsc = bpf_ktime_get_ns();
     s->packet_len = (__u32)(data_end - data);
     s->cpu_id = cpu_id;
     s->seq = pkt_count;
     s->flags = 0;
     
-    __sync_fetch_and_add(&meta->sampled_packets, 1);
+    /* Update local pointers for next round */
+    meta->write_idx = idx + 1;
+    meta->sampled_packets++;
     
     return XDP_PASS;
 }
