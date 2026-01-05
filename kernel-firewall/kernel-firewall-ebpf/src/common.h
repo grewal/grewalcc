@@ -1,6 +1,5 @@
 /* 
- * KERNELWALL - V25.2 "WARP SENTINEL" 
- * Geometry Fix: Pages vs Bytes
+ * KERNELWALL - V25.6 "ATOMIC-FREE FIREWALL" 
  */
 
 #ifndef __KERNELWALL_COMMON_H
@@ -9,15 +8,16 @@
 #include <linux/types.h>
 
 #define KW_ABI_MAGIC    0x53484457
-#define KW_ABI_VERSION  25
+#define KW_ABI_VERSION  26
 
 /* 
- * ARENA GEOMETRY
- * max_entries for ARENA is in PAGES.
- * 256 pages * 4096 bytes = 1,048,576 bytes (1MB)
+ * ARENA GEOMETRY: 1MB Total
+ * Split exactly into two 512KB "Hegemonies" 
  */
 #define ARENA_PAGES        256
 #define ARENA_SIZE_BYTES   (ARENA_PAGES * 4096)
+#define SHARD_SIZE_BYTES   (512 * 1024) 
+
 #define SAMPLES_PER_SHARD  8192
 #define SAMPLE_SIZE        64
 #define METADATA_LIMIT     256
