@@ -1,6 +1,6 @@
 /* 
- * KERNELWALL - V25.6 "ATOMIC-FREE FIREWALL" 
- * Data Plane: Physical Sharding (No Atomics)
+ * KERNELWALL V30.0 "PORT PARALLEL"
+ * Data Plane: Port-Parallel Execution Chains
  */
 
 #include <linux/bpf.h>
@@ -8,10 +8,13 @@
 #include <bpf/bpf_helpers.h>
 #include "common.h"
 
+volatile const __u32 CONFIG_MAX_CPUS = 0;
+
 struct {
     __uint(type, BPF_MAP_TYPE_ARENA);
     __uint(max_entries, ARENA_PAGES);
     __uint(map_flags, BPF_F_MMAPABLE);
+    __uint(map_extra, 0x7F0000000000);
 } arena_map SEC(".maps");
 
 struct {
@@ -23,57 +26,67 @@ struct {
 
 SEC("xdp")
 int xdp_warp_sentinel(struct xdp_md *ctx) {
+    /* 
+     * SILICON WARM-UP
+     * Triggers STLB walker immediately.
+     */
+    void __arena *base = (void __arena *)(long)&arena_map;
+    volatile char trigger = *(volatile char __arena *)base;
+    (void)trigger;
+
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
 
-    /* --- PHASE 1: INGRESS (3ns) --- */
+    /* --- PHASE 1: INGRESS --- */
     struct ethhdr *eth = data;
     if ((void *)(eth + 1) > data_end) return XDP_PASS;
 
     /* --- PHASE 2: IDENTITY --- */
     __u32 cpu_id = bpf_get_smp_processor_id();
-    if (cpu_id >= 2) return XDP_PASS;
+    if (cpu_id >= CONFIG_MAX_CPUS) return XDP_PASS;
 
     __u32 key = 0;
     struct shard_meta *meta = bpf_map_lookup_elem(&shard_meta_map, &key);
     if (!meta) return XDP_PASS;
 
-    /* --- PHASE 3: SAMPLING (Non-Atomic) --- */
-    /* Standard increment: CPU core owns this memory, no LOCK needed */
+    /* --- PHASE 3: PORT-PARALLEL CHAINS --- */
     __u64 pkt_count = meta->total_packets++;
     
-    if ((pkt_count & 0x7F) != 0) {
-        return XDP_PASS;
+    if ((pkt_count & 0x7F) == 0) {
+        
+        /* 
+         * OPTIMIZATION: Front-load LEA (Port 1)
+         * We compute the address chain BEFORE the clock tax starts.
+         */
+        __u32 shard_offset = cpu_id << 19;     // Port 1: LEA
+        __u32 idx = meta->write_idx & 0x1FFF;  // Port 0: AND
+        __u64 sample_offset = (__u64)idx << 6; // Port 1: LEA
+        
+        struct latency_sample __arena *s = 
+            (struct latency_sample __arena *)((char __arena *)base + shard_offset + METADATA_SIZE + sample_offset);
+
+        /* HARDWARE PREFETCH: Port 2/3 (Load AGU) - No contention with Port 0/1 */
+        __builtin_prefetch(s, 1, 3);
+
+        /* THE CLOCK TAX: Port 0/5 busy for 14ns */
+        __u64 timestamp = bpf_ktime_get_ns();
+        __u8 entropy = (__u8)(timestamp & 0x1);
+
+        /* --- PHASE 4: ARENA COMMIT --- */
+        if (meta->canary != 0xC0FFEE01FACADE42ULL) {
+            meta->canary = 0xC0FFEE01FACADE42ULL;
+        }
+
+        s->tsc = timestamp;
+        s->cpu_id = cpu_id;
+        s->tsc_lsb = entropy;
+        s->seq = pkt_count;
+        s->packet_len = (__u32)(data_end - data);
+        
+        meta->write_idx = idx + 1;
+        meta->sampled_packets++;
     }
 
-    /* --- PHASE 4: ARENA COMMIT (Lockless) --- */
-    void __arena *arena_base = (void __arena *)(long)&arena_map;
-    if (!arena_base) return XDP_PASS;
-
-    if (meta->canary != 0xC0FFEE01FACADE42ULL) {
-        meta->canary = 0xC0FFEE01FACADE42ULL;
-    }
-
-    /* Hardware-Locked Sharding: Direct 512KB jump per CPU */
-    __u32 shard_offset = cpu_id * SHARD_SIZE_BYTES;
-    struct latency_sample __arena *samples = 
-        (struct latency_sample __arena *)((char __arena *)arena_base + shard_offset + METADATA_LIMIT);
-    
-    /* Lockless Ring Management */
-    __u32 idx = meta->write_idx & (SAMPLES_PER_SHARD - 1);
-    struct latency_sample __arena *s = &samples[idx];
-    
-    /* Direct Assignment */
-    s->tsc = bpf_ktime_get_ns();
-    s->packet_len = (__u32)(data_end - data);
-    s->cpu_id = cpu_id;
-    s->seq = pkt_count;
-    s->flags = 0;
-    
-    /* Update local pointers for next round */
-    meta->write_idx = idx + 1;
-    meta->sampled_packets++;
-    
     return XDP_PASS;
 }
 
