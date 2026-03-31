@@ -35,8 +35,9 @@ os.environ["LD"]       = "ld.lld-21"
 # Kernel config fragment
 # ---------------------------------------------------------------------------
 HARDENING_FRAGMENT = {
-    "CONFIG_PREEMPT_DYNAMIC":                   "n",
-    "CONFIG_PREEMPT_VOLUNTARY":                 "y",
+    "CONFIG_PREEMPT_DYNAMIC":                    "n",
+    "CONFIG_PREEMPT_VOLUNTARY":                  "y",
+    "CONFIG_CPU_MITIGATIONS":                    "n",
     "CONFIG_IKCONFIG":                           "y",
     "CONFIG_IKCONFIG_PROC":                      "y",
     "CONFIG_SECURITY":                           "y",
@@ -66,7 +67,7 @@ HARDENING_FRAGMENT = {
     "CONFIG_LRU_GEN":                            "y",
     "CONFIG_LRU_GEN_ENABLED":                    "y",
     "CONFIG_ZRAM":                               "y",
-    "CONFIG_ZRAM_DEF_COMP_LZO":                 "y",
+    "CONFIG_ZRAM_DEF_COMP_LZO":                  "y",
     "CONFIG_CPU_FREQ_GOV_PERFORMANCE":           "y",
     "CONFIG_DRM":                                "n",
     "CONFIG_AGP":                                "n",
