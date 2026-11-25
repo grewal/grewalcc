@@ -9,8 +9,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("Database query failed")]
-    DatabaseQueryError(#[from] redis::RedisError),
+    #[error("Database query failed: {0}")]
+    DatabaseQueryError(String),
 
     #[error("Failed to connect to database: {0}")]
     DatabaseConnectionFailed(String),
@@ -44,6 +44,19 @@ pub enum AppError {
 
     #[error("Token Creation Error: {0}")]
     TokenCreationError(String),
+
+    #[error("Username already exists")]
+    UsernameAlreadyExists,
+
+    #[error("Email already exists")]
+    EmailAlreadyExists,
+}
+
+// Helper to convert RedisError to AppError
+impl From<redis::RedisError> for AppError {
+    fn from(err: redis::RedisError) -> Self {
+        AppError::DatabaseQueryError(err.to_string())
+    }
 }
 
 impl IntoResponse for AppError {
@@ -66,12 +79,19 @@ impl IntoResponse for AppError {
             AppError::ConflictError { field, message } => {
                 (StatusCode::CONFLICT, json!({ "field": field, "message": message }))
             }
-            AppError::InvalidCredentials(message) 
-            | AppError::Unauthorized(message) 
-            | AppError::TokenCreationError(message) => { // ADDED here
+            AppError::UsernameAlreadyExists => (
+                StatusCode::CONFLICT,
+                json!({ "field": "username", "message": "Username already exists" }),
+            ),
+            AppError::EmailAlreadyExists => (
+                StatusCode::CONFLICT,
+                json!({ "field": "email", "message": "Email already exists" }),
+            ),
+            AppError::InvalidCredentials(message)
+            | AppError::Unauthorized(message)
+            | AppError::TokenCreationError(message) => {
                 (StatusCode::UNAUTHORIZED, json!({ "error": message }))
             }
-            // Catch-all for all other 500-level errors
             _ => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({ "error": self.to_string() }),

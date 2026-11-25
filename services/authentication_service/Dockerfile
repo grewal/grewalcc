@@ -13,25 +13,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy all necessary application files for a single, direct build
-# Source paths are relative to the build context root (services/authentication_service/)
-# Destination paths are relative to WORKDIR (/usr/src/app)
-COPY Cargo.toml Cargo.lock ./
-COPY .sqlx ./.sqlx/
-COPY src ./src/
-COPY migrations ./migrations/
+# Paths are now relative to the build context root (the project root).
+COPY services/authentication_service/Cargo.toml services/authentication_service/Cargo.lock ./
+COPY services/authentication_service/.sqlx ./.sqlx/
+COPY services/authentication_service/src ./src/
+COPY services/authentication_service/migrations ./migrations/
+COPY services/authentication_service/redis-scripts ./redis-scripts/
 
 # --- DEBUG: List contents of /usr/src/app to verify copies ---
-RUN echo ">>> Builder: Contents of /usr/src/app BEFORE build:" && ls -A /usr/src/app && \
-    echo ">>> Builder: Contents of /usr/src/app/.sqlx/ (if exists):" && \
-    (ls -A /usr/src/app/.sqlx || echo "  .sqlx directory not found in /usr/src/app or is empty") && \
-    echo ">>> Builder: Contents of /usr/src/app/src/ (if exists):" && \
-    (ls -A /usr/src/app/src || echo "  src directory not found in /usr/src/app or is empty") && \
-    echo ">>> Builder: Contents of /usr/src/app/migrations/ (if exists):" && \
-    (ls -A /usr/src/app/migrations || echo "  migrations directory not found in /usr/src/app or is empty")
+RUN echo ">>> Builder: Contents of /usr/src/app AFTER copy:" && ls -A /usr/src/app
 
 # Perform a SINGLE, direct build of the release binary.
 # This will use the .sqlx cache if DATABASE_URL is not set in this build stage.
-# Gemi: Corrected the binary name from 'authentication' to 'authentication_service' to match Cargo.toml
 RUN echo ">>> Builder: Starting cargo build --release --locked --bin authentication_service..." && \
     cargo build --release --locked --bin authentication_service && \
     echo ">>> Builder: Listing /usr/src/app/target/release/ after build:" && \
@@ -68,9 +61,10 @@ RUN groupadd -r -g ${APP_GID} ${APP_GROUP} \
 
 WORKDIR /app
 
-# Gemi: Corrected the source path of the binary being copied from the builder stage.
 COPY --from=builder /usr/src/app/target/release/authentication_service /usr/local/bin/authentication_service
 COPY --from=builder /usr/src/app/migrations ./migrations
+# Copy Lua script into the final image
+COPY --from=builder /usr/src/app/redis-scripts ./redis-scripts
 
 RUN chown -R ${APP_USER}:${APP_GROUP} /app \
  && chown ${APP_USER}:${APP_GROUP} /usr/local/bin/authentication_service
